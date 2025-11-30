@@ -1,4 +1,4 @@
-export type TokenSymbol = 'SOL' | 'USDC' | 'ORE' | 'BONK' | 'JIM' | 'GODL';
+export type TokenSymbol = 'SOL' | 'USDC' | 'ORE' | 'BONK' | 'JIM' | 'GODL' | 'HUSTLE';
 
 export type SolanaNetwork = 'mainnet-beta';
 
