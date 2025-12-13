@@ -1,0 +1,38 @@
+# Source files (we publish compiled dist/ instead)
+src/
+tsconfig.json
+
+# Examples and documentation
+examples/
+public/
+
+# Development files
+*.log
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test files
+test/
+*.test.ts
+*.test.js
+*.spec.ts
+*.spec.js
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Don't ignore these - they should be published
+!dist/
+!wasm/
+!README.md
+!BROWSER_SETUP.md
+!CHANGELOG.md
+!LICENSE
+!package.json
+

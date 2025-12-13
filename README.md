@@ -11,6 +11,7 @@ ShadowWire lets you make private transfers on Solana. You can hide transaction a
 - **Private transfers** - Hide payment amounts on-chain
 - **Multi-token** - SOL, USDC, ORE, BONK, JIM, GODL
 - **Flexible** - Client-side or backend proof generation
+- **Browser & Node.js** - Works in web apps and server-side
 - **Type-safe** - Full TypeScript support
 
 ## Installation
@@ -18,6 +19,8 @@ ShadowWire lets you make private transfers on Solana. You can hide transaction a
 ```bash
 npm install @radr/shadowwire
 ```
+
+**For browser/web apps:** See the [Browser Setup Guide](./BROWSER_SETUP.md) for detailed instructions on using ShadowWire in React, Vue, Angular, or vanilla JavaScript.
 
 ## Quick Start
 
@@ -135,14 +138,10 @@ TokenUtils.fromSmallestUnit(100000000, 'SOL');  // 0.1
 
 If you want maximum privacy, generate proofs in the browser:
 
+### Node.js
+
 ```typescript
 import { initWASM, generateRangeProof, isWASMSupported } from '@radr/shadowwire';
-
-// Check if browser supports WASM
-if (!isWASMSupported()) {
-  console.log('Use backend proofs instead');
-  return;
-}
 
 // Initialize WASM (only needed once)
 await initWASM();
@@ -162,7 +161,38 @@ await client.transferWithClientProofs({
 });
 ```
 
-Proof generation takes 2-3 seconds. Show a loading indicator.
+### Browser
+
+```typescript
+import { initWASM, generateRangeProof, isWASMSupported } from '@radr/shadowwire';
+
+// Check if browser supports WASM
+if (!isWASMSupported()) {
+  console.log('Use backend proofs instead');
+  return;
+}
+
+// Initialize WASM with path to WASM file (must be served by your web server)
+await initWASM('/wasm/settler_wasm_bg.wasm');
+
+// Generate proof locally
+const amountLamports = 100000000;  // 0.1 SOL
+const proof = await generateRangeProof(amountLamports, 64);
+
+// Use it in a transfer
+await client.transferWithClientProofs({
+  sender: 'YOUR_WALLET',
+  recipient: 'RECIPIENT_WALLET',
+  amount: 0.1,
+  token: 'SOL',
+  type: 'internal',
+  customProof: proof
+});
+```
+
+**Note:** Proof generation takes 2-3 seconds. Show a loading indicator.
+
+**For browser setup:** See the [Browser Setup Guide](./BROWSER_SETUP.md) for complete instructions including bundler configuration and deployment.
 
 ## Error Handling
 
@@ -270,13 +300,22 @@ Backend for almost everything. Client-side only if you really don't trust the ba
 
 ## Browser Support
 
-Client-side proofs work in:
-- Chrome/Edge 57+
-- Firefox 52+  
-- Safari 11+
-- Node.js 8+
+The SDK now supports both Node.js and browser environments!
 
-Backend proofs work everywhere.
+**Client-side proofs work in:**
+- ✅ Chrome/Edge 57+
+- ✅ Firefox 52+  
+- ✅ Safari 11+
+- ✅ Node.js 10+
+- ❌ Internet Explorer (not supported)
+
+**Backend proofs work everywhere** (including all browsers).
+
+**Using in web apps?** Check out the [Browser Setup Guide](./BROWSER_SETUP.md) for:
+- React, Vue, Angular examples
+- Webpack, Vite, Next.js configuration
+- WASM file deployment guide
+- Troubleshooting common issues
 
 ## Advanced
 

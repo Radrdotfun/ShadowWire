@@ -1,37 +1,116 @@
 import init, { generate_range_proof, verify_range_proof, ZKProofResult } from '../wasm/settler_wasm';
 import { ZKProofData } from './types';
 import { ProofGenerationError, WASMNotSupportedError } from './errors';
-import * as path from 'path';
-import * as fs from 'fs';
 
 let wasmInitialized = false;
 
-export async function initWASM(): Promise<void> {
+/**
+ * Detects if running in Node.js environment
+ */
+function isNode(): boolean {
+  return typeof process !== 'undefined' && 
+         process.versions != null && 
+         process.versions.node != null;
+}
+
+/**
+ * Initializes WASM module for Node.js environment
+ */
+async function initWASMNode(): Promise<void> {
+  // Dynamic import for Node.js-only modules
+  const path = await import('path');
+  const fs = await import('fs');
+  
+  const wasmPaths = [
+    path.join(__dirname, '../wasm/settler_wasm_bg.wasm'),
+    path.join(process.cwd(), 'wasm/settler_wasm_bg.wasm'),
+    path.join(process.cwd(), 'dist/wasm/settler_wasm_bg.wasm'),
+    path.join(process.cwd(), 'node_modules/@radr/shadowwire/dist/wasm/settler_wasm_bg.wasm'),
+  ];
+  
+  let wasmPath: string | undefined;
+  for (const p of wasmPaths) {
+    if (fs.existsSync(p)) {
+      wasmPath = p;
+      break;
+    }
+  }
+  
+  if (!wasmPath) {
+    throw new Error('WASM file not found in any expected location');
+  }
+  
+  const wasmBuffer = fs.readFileSync(wasmPath);
+  await init(wasmBuffer);
+}
+
+/**
+ * Initializes WASM module for browser environment
+ */
+async function initWASMBrowser(wasmUrl?: string): Promise<void> {
+  // Default WASM URLs to try in browser
+  const defaultUrls = [
+    '/wasm/settler_wasm_bg.wasm',
+    './wasm/settler_wasm_bg.wasm',
+    '../wasm/settler_wasm_bg.wasm',
+  ];
+  
+  const urlsToTry = wasmUrl ? [wasmUrl, ...defaultUrls] : defaultUrls;
+  
+  let lastError: Error | null = null;
+  
+  for (const url of urlsToTry) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch WASM: ${response.status} ${response.statusText}`);
+      }
+      
+      const wasmBuffer = await response.arrayBuffer();
+      await init(wasmBuffer);
+      return; // Success!
+    } catch (error: any) {
+      lastError = error;
+      // Continue to next URL
+    }
+  }
+  
+  throw new Error(
+    `Could not load WASM from any location. Last error: ${lastError?.message}. ` +
+    `In browser environments, ensure the WASM file is served at one of: ${urlsToTry.join(', ')}`
+  );
+}
+
+/**
+ * Initializes the WASM module. Must be called before using proof functions.
+ * 
+ * @param wasmUrl - (Browser only) Optional custom URL to the WASM file.
+ *                  If not provided, will try default paths: /wasm/settler_wasm_bg.wasm, 
+ *                  ./wasm/settler_wasm_bg.wasm, ../wasm/settler_wasm_bg.wasm
+ * 
+ * @example
+ * // Node.js
+ * await initWASM();
+ * 
+ * @example
+ * // Browser with default path
+ * await initWASM();
+ * 
+ * @example
+ * // Browser with custom path
+ * await initWASM('/public/wasm/settler_wasm_bg.wasm');
+ */
+export async function initWASM(wasmUrl?: string): Promise<void> {
   if (wasmInitialized) {
     return;
   }
   
   try {
-    const wasmPaths = [
-      path.join(__dirname, '../wasm/settler_wasm_bg.wasm'),
-      path.join(process.cwd(), 'wasm/settler_wasm_bg.wasm'),
-      path.join(process.cwd(), 'dist/wasm/settler_wasm_bg.wasm'),
-    ];
-    
-    let wasmPath: string | undefined;
-    for (const p of wasmPaths) {
-      if (fs.existsSync(p)) {
-        wasmPath = p;
-        break;
-      }
+    if (isNode()) {
+      await initWASMNode();
+    } else {
+      await initWASMBrowser(wasmUrl);
     }
-    
-    if (!wasmPath) {
-      throw new Error('WASM file not found in any expected location');
-    }
-    
-    const wasmBuffer = fs.readFileSync(wasmPath);
-    await init(wasmBuffer);
     wasmInitialized = true;
   } catch (error: any) {
     throw new ProofGenerationError(`Could not load cryptography module: ${error.message}`);
