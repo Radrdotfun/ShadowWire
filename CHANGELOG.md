@@ -2,6 +2,90 @@
 
 All notable changes to the ShadowWire SDK will be documented in this file.
 
+## [1.1.1] - 2025-12-14
+
+### 🔐 Added - Wallet Signature Authentication
+
+- **Wallet signature authentication** - All transfer methods now support optional wallet signature authentication
+- **New tokens** - Added support for 6 new tokens: RADR, ZEC, CRT, BLACKCOIN, GIL, ANON
+- **Signature generation** - New `generateTransferSignature()` utility function
+- **Enhanced security** - Transfers can now be authenticated with wallet signatures for additional security
+
+### 📦 New Tokens Added
+
+- **RADR** (9 decimals) - Radr token
+- **ZEC** (8 decimals) - Zcash
+- **CRT** (9 decimals) - DefiCarrot
+- **BLACKCOIN** (6 decimals) - Blackcoin
+- **GIL** (6 decimals) - Kith Gil
+- **ANON** (9 decimals) - ANON
+
+### 🔧 Technical Changes
+
+- Added `bs58` dependency for signature encoding
+- New `WalletAdapter` interface for wallet integration
+- New `SignatureAuth` interface for signature authentication
+- All transfer methods now accept optional `wallet` parameter
+- Signature format: `shadowpay:{transferType}:{nonce}:{timestamp}`
+
+### 📚 API Changes
+
+#### New Exports
+- `generateTransferSignature()` - Generate wallet signatures for transfers
+- `determineSignatureTransferType()` - Helper to determine transfer type
+- `SUPPORTED_TOKENS` - Array of all supported token symbols
+- `WalletAdapter` type - Wallet interface for signing
+- `SignatureAuth` type - Signature authentication object
+- `SignatureTransferType` type - Transfer type for signatures
+
+#### Updated Methods
+All transfer methods now support optional wallet signature authentication:
+- `uploadProof(request, wallet?)` - Optional wallet parameter
+- `externalTransfer(request, wallet?)` - Optional wallet parameter
+- `internalTransfer(request, wallet?)` - Optional wallet parameter
+- `transfer(request)` - Wallet can be included in request object
+- `transferWithClientProofs(request)` - Wallet can be included in request object
+
+### 📝 Usage Example
+
+```typescript
+import { ShadowWireClient, WalletAdapter } from '@radr/shadowwire';
+import { useWallet } from '@solana/wallet-adapter-react';
+
+// In your component
+const { signMessage, publicKey } = useWallet();
+
+const client = new ShadowWireClient();
+
+// Transfer with signature authentication
+await client.transfer({
+  sender: publicKey!.toBase58(),
+  recipient: 'RECIPIENT_ADDRESS',
+  amount: 1.0,
+  token: 'SOL',
+  type: 'internal',
+  wallet: { signMessage: signMessage! } // Optional wallet for authentication
+});
+```
+
+### 🔒 Security Notes
+
+- Wallet signatures are **optional** - transfers work without them
+- When provided, signatures add an additional authentication layer
+- Signatures use the format: `shadowpay:{transferType}:{nonce}:{timestamp}`
+- Backend validates signatures match the sender wallet address
+- Nonce ensures each signature is unique (replay protection)
+
+### 🐛 Bug Fixes
+
+None in this release.
+
+### ⚠️ Breaking Changes
+
+None - this release is fully backward compatible with v1.1.0.
+
+---
+
 ## [1.1.0] - 2025-12-13
 
 ### 🎉 Added - Browser Support

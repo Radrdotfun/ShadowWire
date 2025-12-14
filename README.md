@@ -9,7 +9,8 @@ ShadowWire lets you make private transfers on Solana. You can hide transaction a
 ## Features
 
 - **Private transfers** - Hide payment amounts on-chain
-- **Multi-token** - SOL, USDC, ORE, BONK, JIM, GODL
+- **Multi-token** - Supports 13 tokens including SOL, RADR, USDC, and more
+- **Wallet signature authentication** - Optional additional security layer
 - **Flexible** - Client-side or backend proof generation
 - **Browser & Node.js** - Works in web apps and server-side
 - **Type-safe** - Full TypeScript support
@@ -115,14 +116,21 @@ console.log(result.amount_hidden);  // true for internal, false for external
 
 ## Token Support
 
-| Token | Decimals | 
-|-------|----------|
-| SOL   | 9        |
-| USDC  | 6        |
-| ORE   | 11       |
-| BONK  | 5        |
-| JIM   | 9        |
-| GODL  | 11       |
+| Token | Decimals | Description |
+|-------|----------|-------------|
+| SOL   | 9        | Solana native token |
+| RADR  | 9        | Radr |
+| USDC  | 6        | USD Coin |
+| ORE   | 11       | ORE |
+| BONK  | 5        | Bonk |
+| JIM   | 9        | Jim |
+| GODL  | 11       | GODL |
+| HUSTLE| 9        | Hustle |
+| ZEC   | 8        | Zcash |
+| CRT   | 9        | DefiCarrot |
+| BLACKCOIN | 6    | Blackcoin |
+| GIL   | 6        | Kith Gil |
+| ANON  | 9        | ANON |
 
 ```typescript
 import { TokenUtils } from '@radr/shadowwire';
@@ -133,6 +141,35 @@ TokenUtils.toSmallestUnit(0.1, 'SOL');  // 100000000
 // Convert back
 TokenUtils.fromSmallestUnit(100000000, 'SOL');  // 0.1
 ```
+
+## Wallet Signature Authentication (Optional)
+
+For enhanced security, you can authenticate transfers with your wallet signature:
+
+```typescript
+import { ShadowWireClient } from '@radr/shadowwire';
+import { useWallet } from '@solana/wallet-adapter-react';
+
+const { signMessage, publicKey } = useWallet();
+const client = new ShadowWireClient();
+
+// Transfer with wallet signature authentication
+await client.transfer({
+  sender: publicKey!.toBase58(),
+  recipient: 'RECIPIENT_ADDRESS',
+  amount: 1.0,
+  token: 'SOL',
+  type: 'internal',
+  wallet: { signMessage: signMessage! } // Optional authentication
+});
+```
+
+**Benefits:**
+- Additional security layer on top of ZK proofs
+- Prevents unauthorized transfers
+- Wallet signature proves you control the sender address
+
+**Note:** Wallet signatures are **optional**. Transfers work without them, but signatures provide extra security.
 
 ## Client-Side Proofs (Advanced)
 

@@ -1,14 +1,41 @@
-export type TokenSymbol = 'SOL' | 'USDC' | 'ORE' | 'BONK' | 'JIM' | 'GODL' | 'HUSTLE';
+export const SUPPORTED_TOKENS = [
+  'SOL',
+  'RADR',
+  'USDC',
+  'ORE',
+  'BONK',
+  'JIM',
+  'GODL',
+  'HUSTLE',
+  'ZEC',
+  'CRT',
+  'BLACKCOIN',
+  'GIL',
+  'ANON',
+] as const;
+
+export type TokenSymbol = typeof SUPPORTED_TOKENS[number];
 
 export type SolanaNetwork = 'mainnet-beta';
 
 export type TransferType = 'internal' | 'external';
+
+export type SignatureTransferType = 'zk_transfer' | 'external_transfer' | 'internal_transfer';
 
 export interface ShadowWireClientConfig {
   apiKey?: string;
   apiBaseUrl?: string;
   network?: SolanaNetwork;
   debug?: boolean;
+}
+
+export interface WalletAdapter {
+  signMessage: (message: Uint8Array) => Promise<Uint8Array>;
+}
+
+export interface SignatureAuth {
+  sender_signature: string;
+  signature_message: string;
 }
 
 export interface PoolBalance {
@@ -52,6 +79,8 @@ export interface UploadProofRequest {
   token: string;
   amount: number;
   nonce: number;
+  sender_signature?: string;
+  signature_message?: string;
 }
 
 export interface UploadProofResponse {
@@ -66,6 +95,8 @@ export interface ExternalTransferRequest {
   token: string;
   nonce: number;
   relayer_fee: number;
+  sender_signature?: string;
+  signature_message?: string;
 }
 
 export interface ExternalTransferResponse {
@@ -81,6 +112,8 @@ export interface InternalTransferRequest {
   token: string;
   nonce: number;
   relayer_fee: number;
+  sender_signature?: string;
+  signature_message?: string;
 }
 
 export interface InternalTransferResponse {
@@ -95,6 +128,7 @@ export interface TransferRequest {
   amount: number;
   token: TokenSymbol;
   type: TransferType;
+  wallet?: WalletAdapter;
 }
 
 export interface TransferResponse {
@@ -118,6 +152,7 @@ export interface TransferWithClientProofsRequest {
   token: TokenSymbol;
   type: TransferType;
   customProof?: ZKProofData;
+  wallet?: WalletAdapter;
 }
 
 export interface AuthorizeSpendingRequest {

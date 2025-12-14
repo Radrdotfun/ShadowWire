@@ -21,12 +21,14 @@ import {
   RevokeAuthorizationRequest,
   RevokeAuthorizationResponse,
   Authorization,
+  WalletAdapter,
 } from './types';
 import { DEFAULT_API_BASE_URL, DEFAULT_NETWORK } from './constants';
 import { TokenUtils } from './tokens';
 import { validateSolanaAddress, generateNonce, makeHttpRequest } from './utils';
 import { InvalidAmountError, RecipientNotFoundError, TransferError } from './errors';
 import { generateRangeProof, isWASMSupported, initWASM } from './zkProofs';
+import { generateTransferSignature, determineSignatureTransferType } from './auth';
 
 export class ShadowWireClient {
   private apiKey?: string;
@@ -88,45 +90,78 @@ export class ShadowWireClient {
     );
   }
 
-  async uploadProof(request: UploadProofRequest): Promise<UploadProofResponse> {
+  async uploadProof(request: UploadProofRequest, wallet?: WalletAdapter): Promise<UploadProofResponse> {
     validateSolanaAddress(request.sender_wallet);
     
     if (request.amount <= 0) {
       throw new InvalidAmountError('Amount must be greater than zero');
+    }
+
+    let requestData = { ...request };
+
+    // Generate signature if wallet provided
+    if (wallet?.signMessage) {
+      const sigAuth = await generateTransferSignature(wallet, 'zk_transfer');
+      requestData = {
+        ...requestData,
+        ...sigAuth,
+      };
     }
     
     return makeHttpRequest<UploadProofResponse>(
       `${this.apiBaseUrl}/zk/upload-proof`,
       'POST',
       this.apiKey,
-      request,
+      requestData,
       this.debug
     );
   }
 
-  async externalTransfer(request: ExternalTransferRequest): Promise<ExternalTransferResponse> {
+  async externalTransfer(request: ExternalTransferRequest, wallet?: WalletAdapter): Promise<ExternalTransferResponse> {
     validateSolanaAddress(request.sender_wallet);
     validateSolanaAddress(request.recipient_wallet);
     
     if (request.sender_wallet === request.recipient_wallet) {
       throw new TransferError('Cannot transfer to yourself');
     }
+
+    let requestData = { ...request };
+
+    // Generate signature if wallet provided
+    if (wallet?.signMessage) {
+      const sigAuth = await generateTransferSignature(wallet, 'external_transfer');
+      requestData = {
+        ...requestData,
+        ...sigAuth,
+      };
+    }
     
     return makeHttpRequest<ExternalTransferResponse>(
       `${this.apiBaseUrl}/zk/external-transfer`,
       'POST',
       this.apiKey,
-      request,
+      requestData,
       this.debug
     );
   }
 
-  async internalTransfer(request: InternalTransferRequest): Promise<InternalTransferResponse> {
+  async internalTransfer(request: InternalTransferRequest, wallet?: WalletAdapter): Promise<InternalTransferResponse> {
     validateSolanaAddress(request.sender_wallet);
     validateSolanaAddress(request.recipient_wallet);
     
     if (request.sender_wallet === request.recipient_wallet) {
       throw new TransferError('Cannot transfer to yourself');
+    }
+
+    let requestData = { ...request };
+
+    // Generate signature if wallet provided
+    if (wallet?.signMessage) {
+      const sigAuth = await generateTransferSignature(wallet, 'internal_transfer');
+      requestData = {
+        ...requestData,
+        ...sigAuth,
+      };
     }
     
     try {
@@ -134,7 +169,7 @@ export class ShadowWireClient {
         `${this.apiBaseUrl}/zk/internal-transfer`,
         'POST',
         this.apiKey,
-        request,
+        requestData,
         this.debug
       );
     } catch (error: any) {
@@ -241,7 +276,7 @@ export class ShadowWireClient {
       token: token,
       amount: amountSmallestUnit,
       nonce: nonce,
-    });
+    }, request.wallet);
     
     const relayerFee = Math.floor(amountSmallestUnit * 0.01);
     
@@ -252,7 +287,7 @@ export class ShadowWireClient {
         token: token,
         nonce: proofResult.nonce,
         relayer_fee: relayerFee,
-      });
+      }, request.wallet);
       
       return {
         success: internalResult.success,
@@ -268,7 +303,7 @@ export class ShadowWireClient {
         token: token,
         nonce: proofResult.nonce,
         relayer_fee: relayerFee,
-      });
+      }, request.wallet);
       
       return {
         success: externalResult.success,
