@@ -10,9 +10,9 @@
 
 ## ✨ What's New
 
-### 1. 🔐 Wallet Signature Authentication
+### 1. 🔐 Wallet Signature Authentication (MANDATORY)
 
-Added **optional wallet signature authentication** to all transfer methods for enhanced security.
+Added **mandatory wallet signature authentication** to all transfer methods for enhanced security.
 
 **How it works:**
 - Generates a signature message: `shadowpay:{transferType}:{nonce}:{timestamp}`
@@ -35,7 +35,7 @@ await client.transfer({
   amount: 1.0,
   token: 'SOL',
   type: 'internal',
-  wallet: { signMessage: signMessage! } // Optional authentication
+  wallet: { signMessage: signMessage! } // REQUIRED authentication
 });
 ```
 
@@ -133,7 +133,7 @@ Added support for 6 additional tokens:
 2. **Prevents Unauthorized Transfers** - Requires wallet ownership
 3. **Replay Protection** - Unique nonce for each signature
 4. **Timestamp Validation** - Prevents old signatures from being reused
-5. **Optional** - Works with or without signatures
+5. **Mandatory** - All transfers must include valid signatures
 
 ### Signature Format
 
@@ -214,29 +214,32 @@ interface TransferRequest {
 
 ### From v1.1.0 to v1.1.1
 
-**No breaking changes!** This release is 100% backward compatible.
+**⚠️ BREAKING CHANGE:** Wallet signature authentication is now **mandatory** for all transfers.
+
+**Action Required:** All transfer calls must now include a wallet with `signMessage` capability.
 
 #### If you want to use the new features:
 
 1. **Add wallet signature authentication:**
 ```typescript
-// Before (still works)
+// Before (v1.1.0 - NO LONGER WORKS)
 await client.transfer({
   sender: 'SENDER',
   recipient: 'RECIPIENT',
   amount: 1.0,
   token: 'SOL',
   type: 'internal',
+  // Missing wallet - will fail!
 });
 
-// After (with authentication)
+// After (v1.1.1 - REQUIRED)
 await client.transfer({
   sender: 'SENDER',
   recipient: 'RECIPIENT',
   amount: 1.0,
   token: 'SOL',
   type: 'internal',
-  wallet: { signMessage: wallet.signMessage! }, // Optional
+  wallet: { signMessage: wallet.signMessage! }, // REQUIRED
 });
 ```
 

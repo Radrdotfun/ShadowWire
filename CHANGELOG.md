@@ -4,12 +4,12 @@ All notable changes to the ShadowWire SDK will be documented in this file.
 
 ## [1.1.1] - 2025-12-14
 
-### 🔐 Added - Wallet Signature Authentication
+### 🔐 Added - Wallet Signature Authentication (MANDATORY)
 
-- **Wallet signature authentication** - All transfer methods now support optional wallet signature authentication
+- **Wallet signature authentication** - All transfer methods now **require** wallet signature authentication
 - **New tokens** - Added support for 6 new tokens: RADR, ZEC, CRT, BLACKCOIN, GIL, ANON
 - **Signature generation** - New `generateTransferSignature()` utility function
-- **Enhanced security** - Transfers can now be authenticated with wallet signatures for additional security
+- **Enhanced security** - All transfers must be authenticated with wallet signatures
 
 ### 📦 New Tokens Added
 
@@ -39,12 +39,12 @@ All notable changes to the ShadowWire SDK will be documented in this file.
 - `SignatureTransferType` type - Transfer type for signatures
 
 #### Updated Methods
-All transfer methods now support optional wallet signature authentication:
-- `uploadProof(request, wallet?)` - Optional wallet parameter
-- `externalTransfer(request, wallet?)` - Optional wallet parameter
-- `internalTransfer(request, wallet?)` - Optional wallet parameter
-- `transfer(request)` - Wallet can be included in request object
-- `transferWithClientProofs(request)` - Wallet can be included in request object
+All transfer methods now **require** wallet signature authentication:
+- `uploadProof(request, wallet?)` - Wallet parameter (backend validates if provided)
+- `externalTransfer(request, wallet?)` - Wallet parameter (backend validates if provided)
+- `internalTransfer(request, wallet?)` - Wallet parameter (backend validates if provided)
+- `transfer(request)` - **Wallet required** in request object
+- `transferWithClientProofs(request)` - **Wallet required** in request object
 
 ### 📝 Usage Example
 
@@ -64,14 +64,14 @@ await client.transfer({
   amount: 1.0,
   token: 'SOL',
   type: 'internal',
-  wallet: { signMessage: signMessage! } // Optional wallet for authentication
+  wallet: { signMessage: signMessage! } // REQUIRED wallet for authentication
 });
 ```
 
 ### 🔒 Security Notes
 
-- Wallet signatures are **optional** - transfers work without them
-- When provided, signatures add an additional authentication layer
+- Wallet signatures are **mandatory** - all transfers require authentication
+- Signatures provide critical security by proving wallet ownership
 - Signatures use the format: `shadowpay:{transferType}:{nonce}:{timestamp}`
 - Backend validates signatures match the sender wallet address
 - Nonce ensures each signature is unique (replay protection)
@@ -82,7 +82,9 @@ None in this release.
 
 ### ⚠️ Breaking Changes
 
-None - this release is fully backward compatible with v1.1.0.
+**IMPORTANT:** Wallet signature authentication is now **mandatory** for all transfers. You must provide a wallet with `signMessage` capability when making transfers.
+
+**Migration Required:** Update all transfer calls to include the wallet parameter.
 
 ---
 

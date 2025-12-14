@@ -10,7 +10,7 @@ ShadowWire lets you make private transfers on Solana. You can hide transaction a
 
 - **Private transfers** - Hide payment amounts on-chain
 - **Multi-token** - Supports 13 tokens including SOL, RADR, USDC, and more
-- **Wallet signature authentication** - Optional additional security layer
+- **Wallet signature authentication** - Mandatory security layer for all transfers
 - **Flexible** - Client-side or backend proof generation
 - **Browser & Node.js** - Works in web apps and server-side
 - **Type-safe** - Full TypeScript support
@@ -142,9 +142,9 @@ TokenUtils.toSmallestUnit(0.1, 'SOL');  // 100000000
 TokenUtils.fromSmallestUnit(100000000, 'SOL');  // 0.1
 ```
 
-## Wallet Signature Authentication (Optional)
+## Wallet Signature Authentication (Required)
 
-For enhanced security, you can authenticate transfers with your wallet signature:
+All transfers now **require** wallet signature authentication for security:
 
 ```typescript
 import { ShadowWireClient } from '@radr/shadowwire';
@@ -153,23 +153,24 @@ import { useWallet } from '@solana/wallet-adapter-react';
 const { signMessage, publicKey } = useWallet();
 const client = new ShadowWireClient();
 
-// Transfer with wallet signature authentication
+// Transfer with wallet signature authentication (REQUIRED)
 await client.transfer({
   sender: publicKey!.toBase58(),
   recipient: 'RECIPIENT_ADDRESS',
   amount: 1.0,
   token: 'SOL',
   type: 'internal',
-  wallet: { signMessage: signMessage! } // Optional authentication
+  wallet: { signMessage: signMessage! } // REQUIRED for authentication
 });
 ```
 
-**Benefits:**
+**Security Benefits:**
 - Additional security layer on top of ZK proofs
 - Prevents unauthorized transfers
 - Wallet signature proves you control the sender address
+- Backend validates signature matches sender wallet
 
-**Note:** Wallet signatures are **optional**. Transfers work without them, but signatures provide extra security.
+**Important:** Wallet signature authentication is **mandatory**. All transfers must include a valid wallet signature.
 
 ## Client-Side Proofs (Advanced)
 
