@@ -9,7 +9,7 @@ ShadowWire lets you make private transfers on Solana. You can hide transaction a
 ## Features
 
 - **Private transfers** - Hide payment amounts on-chain
-- **Multi-token** - Supports 13 tokens including SOL, RADR, USDC, and more
+- **Multi-token** - Supports 17 tokens including SOL, RADR, USDC, and more
 - **Wallet signature authentication** - Mandatory security layer for all transfers
 - **Flexible** - Client-side or backend proof generation
 - **Browser & Node.js** - Works in web apps and server-side
@@ -131,6 +131,10 @@ console.log(result.amount_hidden);  // true for internal, false for external
 | BLACKCOIN | 6    | Blackcoin |
 | GIL   | 6        | Kith Gil |
 | ANON  | 9        | ANON |
+| WLFI  | 6        | World Liberty Financial |
+| USD1  | 6        | USD1 |
+| AOL   | 6        | AOL |
+| IQLABS| 9        | IQ Labs |
 
 ```typescript
 import { TokenUtils } from '@radr/shadowwire';

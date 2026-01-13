@@ -2,6 +2,32 @@
 
 All notable changes to the ShadowWire SDK will be documented in this file.
 
+## [1.1.2] - 2025-12-14
+
+### 📦 New Tokens Added
+
+Added support for 4 additional tokens:
+
+| Token | Decimals | Mint Address |
+|-------|----------|--------------|
+| WLFI  | 6 | `WLFinEv6ypjkczcS83FZqFpgFZYwQXutRbxGe7oC16g` |
+| USD1  | 6 | `USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB` |
+| AOL   | 6 | `2oQNkePakuPbHzrVVkQ875WHeewLHCd2cAwfwiLQbonk` |
+| IQLABS| 9 | `3uXACfojUrya7VH51jVC1DCHq3uzK4A7g469Q954LABS` |
+
+**Total tokens now supported: 17** (was 13)
+
+### 📝 Updates
+
+- Updated token support table in README
+- Total supported tokens: 17
+
+### ⚠️ Breaking Changes
+
+None - this release is fully backward compatible with v1.1.1.
+
+---
+
 ## [1.1.1] - 2025-12-14
 
 ### 🔐 Added - Wallet Signature Authentication (MANDATORY)

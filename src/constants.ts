@@ -16,6 +16,10 @@ export const TOKEN_MINTS: Record<string, string> = {
   BLACKCOIN: 'J3rYdme789g1zAysfbH9oP4zjagvfVM2PX7KJgFDpump',
   GIL: 'CyUgNnKPQLqFcheyGV8wmypnJqojA7NzsdJjTS4nUT2j',
   ANON: 'D25bi7oHQjqkVrzbfuM6k2gzVNHTSpBLhtakDCzCCDUB',
+  WLFI: 'WLFinEv6ypjkczcS83FZqFpgFZYwQXutRbxGe7oC16g',
+  USD1: 'USD1ttGY1N17NEEHLmELoaybftRBUSErhqYiQzvEmuB',
+  AOL: '2oQNkePakuPbHzrVVkQ875WHeewLHCd2cAwfwiLQbonk',
+  IQLABS: '3uXACfojUrya7VH51jVC1DCHq3uzK4A7g469Q954LABS',
 };
 
 export const TOKEN_DECIMALS: Record<string, number> = {
@@ -32,6 +36,10 @@ export const TOKEN_DECIMALS: Record<string, number> = {
   BLACKCOIN: 6,
   GIL: 6,
   ANON: 9,
+  WLFI: 6,
+  USD1: 6,
+  AOL: 6,
+  IQLABS: 9,
 };
 
 export const DEFAULT_PROOF_BIT_LENGTH = 64;

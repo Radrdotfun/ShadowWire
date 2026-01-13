@@ -12,6 +12,10 @@ export const SUPPORTED_TOKENS = [
   'BLACKCOIN',
   'GIL',
   'ANON',
+  'WLFI',
+  'USD1',
+  'AOL',
+  'IQLABS',
 ] as const;
 
 export type TokenSymbol = typeof SUPPORTED_TOKENS[number];
