@@ -41,22 +41,24 @@ export async function generateTransferSignature(
  */
 function generateRandomNonce(): string {
   // Check if crypto.randomUUID is available (browser or Node 16+)
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
 
-  // Fallback for older Node.js versions
-  if (typeof require !== 'undefined') {
-    try {
-      const nodeCrypto = require('crypto');
-      return nodeCrypto.randomUUID();
-    } catch {
-      // If crypto module not available, generate random string
-    }
+  // Check for globalThis.crypto (works in both Node 19+ and browsers)
+  if (typeof globalThis !== 'undefined' && globalThis.crypto && typeof globalThis.crypto.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
   }
 
-  // Fallback: generate random string
-  return Math.random().toString(36).substring(2) + Date.now().toString(36);
+  // Fallback: generate random string using available randomness
+  const randomPart = typeof crypto !== 'undefined' && crypto.getRandomValues
+    ? Array.from(crypto.getRandomValues(new Uint8Array(16)))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('')
+    : Math.random().toString(36).substring(2) + Math.random().toString(36).substring(2);
+  
+  // Format as UUID-like string
+  return `${randomPart.slice(0, 8)}-${randomPart.slice(8, 12)}-${randomPart.slice(12, 16)}-${randomPart.slice(16, 20)}-${randomPart.slice(20, 32)}`;
 }
 
 /**

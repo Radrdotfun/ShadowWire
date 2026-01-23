@@ -5,43 +5,52 @@ import { ProofGenerationError, WASMNotSupportedError } from './errors';
 let wasmInitialized = false;
 
 /**
- * Detects if running in Node.js environment
+ * Detects if running in Node.js environment (not bundled for browser)
  */
 function isNode(): boolean {
   return typeof process !== 'undefined' && 
          process.versions != null && 
-         process.versions.node != null;
+         process.versions.node != null &&
+         typeof window === 'undefined';
 }
 
 /**
  * Initializes WASM module for Node.js environment
+ * Uses dynamic require hidden from bundlers
  */
 async function initWASMNode(): Promise<void> {
-  // Dynamic import for Node.js-only modules
-  const path = await import('path');
-  const fs = await import('fs');
+  // Use Function constructor to hide require from bundlers
+  // This prevents webpack/rspack from trying to resolve these modules
+  const dynamicRequire = new Function('moduleName', 'return require(moduleName)');
   
-  const wasmPaths = [
-    path.join(__dirname, '../wasm/settler_wasm_bg.wasm'),
-    path.join(process.cwd(), 'wasm/settler_wasm_bg.wasm'),
-    path.join(process.cwd(), 'dist/wasm/settler_wasm_bg.wasm'),
-    path.join(process.cwd(), 'node_modules/@radr/shadowwire/dist/wasm/settler_wasm_bg.wasm'),
-  ];
-  
-  let wasmPath: string | undefined;
-  for (const p of wasmPaths) {
-    if (fs.existsSync(p)) {
-      wasmPath = p;
-      break;
+  try {
+    const path = dynamicRequire('path');
+    const fs = dynamicRequire('fs');
+    
+    const wasmPaths = [
+      path.join(__dirname, '../wasm/settler_wasm_bg.wasm'),
+      path.join(process.cwd(), 'wasm/settler_wasm_bg.wasm'),
+      path.join(process.cwd(), 'dist/wasm/settler_wasm_bg.wasm'),
+      path.join(process.cwd(), 'node_modules/@radr/shadowwire/dist/wasm/settler_wasm_bg.wasm'),
+    ];
+    
+    let wasmPath: string | undefined;
+    for (const p of wasmPaths) {
+      if (fs.existsSync(p)) {
+        wasmPath = p;
+        break;
+      }
     }
+    
+    if (!wasmPath) {
+      throw new Error('WASM file not found in any expected location');
+    }
+    
+    const wasmBuffer = fs.readFileSync(wasmPath);
+    await init(wasmBuffer);
+  } catch (error: any) {
+    throw new Error(`Node.js WASM initialization failed: ${error.message}`);
   }
-  
-  if (!wasmPath) {
-    throw new Error('WASM file not found in any expected location');
-  }
-  
-  const wasmBuffer = fs.readFileSync(wasmPath);
-  await init(wasmBuffer);
 }
 
 /**

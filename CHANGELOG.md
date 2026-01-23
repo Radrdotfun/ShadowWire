@@ -2,6 +2,37 @@
 
 All notable changes to the ShadowWire SDK will be documented in this file.
 
+## [1.1.3] - 2025-12-14
+
+### 🐛 Bug Fixes
+
+**Fixed bundler compatibility issues (rspack, webpack, vite, etc.)**
+
+- Fixed `Module not found: Can't resolve 'crypto'` error in auth.js
+- Fixed `Module not found: Can't resolve 'fs'` error in zkProofs.js  
+- Fixed `Module not found: Can't resolve 'path'` error in zkProofs.js
+- Fixed `__dirname` warning in zkProofs.js
+
+### 🔧 Technical Changes
+
+- Removed Node.js `require('crypto')` from auth.ts - now uses browser-native `crypto.randomUUID()` and `crypto.getRandomValues()`
+- Used `new Function()` pattern to hide Node.js requires from bundlers in zkProofs.ts
+- Added `typeof window === 'undefined'` check to improve Node.js detection
+- Better fallback for UUID generation using Web Crypto API
+
+### 📝 Notes
+
+This fix ensures the SDK works properly with all major bundlers:
+- ✅ rspack
+- ✅ webpack  
+- ✅ vite
+- ✅ rollup
+- ✅ esbuild
+
+No API changes - this is a pure bug fix release.
+
+---
+
 ## [1.1.2] - 2025-12-14
 
 ### 📦 New Tokens Added
