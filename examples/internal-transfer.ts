@@ -12,14 +12,11 @@ async function internalTransferSOL() {
       type: 'internal',
     });
 
-    console.log('Private internal transfer complete');
-    console.log('Transaction signature:', result.tx_signature);
-    console.log('Amount hidden:', result.amount_hidden);
-    console.log('Proof PDA:', result.proof_pda);
+    console.log('Transaction:', result.tx_signature);
+    console.log('Hidden:', result.amount_hidden);
   } catch (error) {
     if (error instanceof RecipientNotFoundError) {
-      console.log('Recipient is not a ShadowPay user');
-      console.log('Try using external transfer instead');
+      console.log('Recipient not found. Use external transfer.');
     } else {
       throw error;
     }
@@ -37,59 +34,51 @@ async function internalTransferORE() {
     type: 'internal',
   });
 
-  console.log('ORE private transfer complete');
-  console.log('TX:', result.tx_signature);
-  console.log('Amount is completely hidden on-chain');
+  console.log('Transaction:', result.tx_signature);
 }
 
-async function privateBusinessPayment() {
+async function internalTransferUSDC() {
   const client = new ShadowWireClient();
 
   const result = await client.transfer({
     sender: 'YOUR_WALLET_ADDRESS',
-    recipient: 'BUSINESS_WALLET_ADDRESS',
+    recipient: 'RECIPIENT_WALLET_ADDRESS',
     amount: 5000,
     token: 'USDC',
     type: 'internal',
   });
 
-  console.log('Private business payment sent');
   console.log('Transaction:', result.tx_signature);
-  console.log('Payment amount is private');
 }
 
 async function internalTransferWithFallback() {
   const client = new ShadowWireClient();
 
-  const recipientAddress = 'RECIPIENT_WALLET_ADDRESS';
+  const recipient = 'RECIPIENT_WALLET_ADDRESS';
   const amount = 0.25;
   const token = 'SOL';
 
   try {
     const result = await client.transfer({
       sender: 'YOUR_WALLET_ADDRESS',
-      recipient: recipientAddress,
+      recipient: recipient,
       amount: amount,
       token: token,
       type: 'internal',
     });
 
-    console.log('Private transfer successful');
-    console.log('TX:', result.tx_signature);
+    console.log('Internal transfer:', result.tx_signature);
   } catch (error) {
     if (error instanceof RecipientNotFoundError) {
-      console.log('Recipient not in ShadowPay, switching to external transfer');
-      
       const result = await client.transfer({
         sender: 'YOUR_WALLET_ADDRESS',
-        recipient: recipientAddress,
+        recipient: recipient,
         amount: amount,
         token: token,
         type: 'external',
       });
 
-      console.log('External transfer successful');
-      console.log('TX:', result.tx_signature);
+      console.log('External transfer:', result.tx_signature);
     } else {
       throw error;
     }
@@ -97,4 +86,3 @@ async function internalTransferWithFallback() {
 }
 
 internalTransferSOL().catch(console.error);
-

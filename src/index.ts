@@ -7,6 +7,7 @@ export {
   generateRangeProof,
   verifyRangeProof,
   isWASMSupported,
+  BULLETPROOF_INFO,
 } from './zkProofs';
 
 export {
@@ -47,17 +48,16 @@ export type {
   UploadProofRequest,
   UploadProofResponse,
   ExternalTransferRequest,
-  ExternalTransferResponse,
   InternalTransferRequest,
-  InternalTransferResponse,
+  ZKTransferResponse,
   TransferRequest,
   TransferResponse,
   ZKProofData,
   TransferWithClientProofsRequest,
-  AuthorizeSpendingRequest,
-  AuthorizeSpendingResponse,
-  RevokeAuthorizationRequest,
-  RevokeAuthorizationResponse,
-  Authorization,
+  BulletproofVerificationData,
+  VerificationUploadResponse,
+  VerifiedTransferResponse,
+  VerificationStatus,
 } from './types';
 
+export { TOKEN_FEES, TOKEN_MINIMUMS, TOKEN_MINTS, TOKEN_DECIMALS } from './constants';

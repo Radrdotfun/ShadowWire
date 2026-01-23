@@ -16,6 +16,11 @@ export const SUPPORTED_TOKENS = [
   'USD1',
   'AOL',
   'IQLABS',
+  'SANA',
+  'POKI',
+  'RAIN',
+  'HOSICO',
+  'SKR',
 ] as const;
 
 export type TokenSymbol = typeof SUPPORTED_TOKENS[number];
@@ -69,61 +74,64 @@ export interface WithdrawRequest {
   wallet: string;
   amount: number;
   token_mint?: string;
+  signed_tx?: string;
 }
 
 export interface WithdrawResponse {
   success: boolean;
-  unsigned_tx_base64: string;
   amount_withdrawn: number;
   fee: number;
+  tx_signature?: string;
+  error?: string;
+  unsigned_tx_base64?: string;
 }
 
 export interface UploadProofRequest {
   sender_wallet: string;
-  token: string;
+  token?: string;
   amount: number;
   nonce: number;
-  sender_signature?: string;
-  signature_message?: string;
 }
 
 export interface UploadProofResponse {
   success: boolean;
+  tx_signature?: string;
   proof_pda: string;
   nonce: number;
+  error?: string;
 }
 
 export interface ExternalTransferRequest {
   sender_wallet: string;
   recipient_wallet: string;
-  token: string;
+  token?: string;
   nonce: number;
-  relayer_fee: number;
+  amount: number;
+  proof_bytes: string;
+  commitment: string;
   sender_signature?: string;
-  signature_message?: string;
-}
-
-export interface ExternalTransferResponse {
-  success: boolean;
-  tx_signature: string;
-  amount_sent: number;
-  proof_pda: string;
 }
 
 export interface InternalTransferRequest {
   sender_wallet: string;
   recipient_wallet: string;
-  token: string;
+  token?: string;
   nonce: number;
-  relayer_fee: number;
+  amount: number;
+  proof_bytes: string;
+  commitment: string;
   sender_signature?: string;
-  signature_message?: string;
 }
 
-export interface InternalTransferResponse {
+export interface ZKTransferResponse {
   success: boolean;
-  tx_signature: string;
-  proof_pda: string;
+  tx_signature?: string;
+  transfer_id: string;
+  amount_hidden: boolean;
+  amount_sent?: number;
+  recipient: string;
+  timestamp: number;
+  error?: string;
 }
 
 export interface TransferRequest {
@@ -140,13 +148,41 @@ export interface TransferResponse {
   tx_signature: string;
   amount_sent: number | null;
   amount_hidden: boolean;
-  proof_pda: string;
 }
 
 export interface ZKProofData {
   proofBytes: string;
   commitmentBytes: string;
   blindingFactorBytes: string;
+}
+
+export interface BulletproofVerificationData {
+  proof: string;
+  commitment: string;
+  amount: number;
+  nonce: number;
+  sender: string;
+  recipient: string;
+}
+
+export interface VerificationUploadResponse {
+  success: boolean;
+  verified_proof_pda: string;
+  tx1_signature: string;
+  verification_stage: number;
+}
+
+export interface VerifiedTransferResponse {
+  success: boolean;
+  tx2_signature: string;
+  amount_transferred: number;
+  relayer_fee: number;
+}
+
+export interface VerificationStatus {
+  proof_pda: string;
+  stage: number;
+  is_valid: boolean;
 }
 
 export interface TransferWithClientProofsRequest {
@@ -159,33 +195,4 @@ export interface TransferWithClientProofsRequest {
   wallet?: WalletAdapter;
 }
 
-export interface AuthorizeSpendingRequest {
-  wallet: string;
-  spender: string;
-  amount: number;
-  token_mint?: string;
-}
-
-export interface AuthorizeSpendingResponse {
-  success: boolean;
-  authorization_id: string;
-}
-
-export interface RevokeAuthorizationRequest {
-  wallet: string;
-  authorization_id: string;
-}
-
-export interface RevokeAuthorizationResponse {
-  success: boolean;
-}
-
-export interface Authorization {
-  id: string;
-  wallet: string;
-  spender: string;
-  amount: number;
-  token_mint: string;
-  created_at: string;
-}
 

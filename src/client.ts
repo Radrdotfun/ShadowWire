@@ -8,22 +8,16 @@ import {
   UploadProofRequest,
   UploadProofResponse,
   ExternalTransferRequest,
-  ExternalTransferResponse,
   InternalTransferRequest,
-  InternalTransferResponse,
+  ZKTransferResponse,
   TransferRequest,
   TransferResponse,
   TransferWithClientProofsRequest,
   TokenSymbol,
   ZKProofData,
-  AuthorizeSpendingRequest,
-  AuthorizeSpendingResponse,
-  RevokeAuthorizationRequest,
-  RevokeAuthorizationResponse,
-  Authorization,
   WalletAdapter,
 } from './types';
-import { DEFAULT_API_BASE_URL, DEFAULT_NETWORK } from './constants';
+import { DEFAULT_API_BASE_URL, DEFAULT_NETWORK, TOKEN_FEES, TOKEN_MINIMUMS } from './constants';
 import { TokenUtils } from './tokens';
 import { validateSolanaAddress, generateNonce, makeHttpRequest } from './utils';
 import { InvalidAmountError, RecipientNotFoundError, TransferError } from './errors';
@@ -90,34 +84,23 @@ export class ShadowWireClient {
     );
   }
 
-  async uploadProof(request: UploadProofRequest, wallet?: WalletAdapter): Promise<UploadProofResponse> {
+  async uploadProof(request: UploadProofRequest): Promise<UploadProofResponse> {
     validateSolanaAddress(request.sender_wallet);
     
     if (request.amount <= 0) {
       throw new InvalidAmountError('Amount must be greater than zero');
-    }
-
-    let requestData = { ...request };
-
-    // Generate signature if wallet provided
-    if (wallet?.signMessage) {
-      const sigAuth = await generateTransferSignature(wallet, 'zk_transfer');
-      requestData = {
-        ...requestData,
-        ...sigAuth,
-      };
     }
     
     return makeHttpRequest<UploadProofResponse>(
       `${this.apiBaseUrl}/zk/upload-proof`,
       'POST',
       this.apiKey,
-      requestData,
+      request,
       this.debug
     );
   }
 
-  async externalTransfer(request: ExternalTransferRequest, wallet?: WalletAdapter): Promise<ExternalTransferResponse> {
+  async externalTransfer(request: ExternalTransferRequest, wallet?: WalletAdapter): Promise<ZKTransferResponse> {
     validateSolanaAddress(request.sender_wallet);
     validateSolanaAddress(request.recipient_wallet);
     
@@ -125,18 +108,24 @@ export class ShadowWireClient {
       throw new TransferError('Cannot transfer to yourself');
     }
 
-    let requestData = { ...request };
+    let requestData: any = {
+      sender_wallet: request.sender_wallet,
+      recipient_wallet: request.recipient_wallet,
+      token: request.token,
+      nonce: request.nonce,
+      amount: request.amount,
+      proof_bytes: request.proof_bytes,
+      commitment: request.commitment,
+    };
 
-    // Generate signature if wallet provided
     if (wallet?.signMessage) {
       const sigAuth = await generateTransferSignature(wallet, 'external_transfer');
-      requestData = {
-        ...requestData,
-        ...sigAuth,
-      };
+      requestData.sender_signature = sigAuth.sender_signature;
+    } else if (request.sender_signature) {
+      requestData.sender_signature = request.sender_signature;
     }
     
-    return makeHttpRequest<ExternalTransferResponse>(
+    return makeHttpRequest<ZKTransferResponse>(
       `${this.apiBaseUrl}/zk/external-transfer`,
       'POST',
       this.apiKey,
@@ -145,7 +134,7 @@ export class ShadowWireClient {
     );
   }
 
-  async internalTransfer(request: InternalTransferRequest, wallet?: WalletAdapter): Promise<InternalTransferResponse> {
+  async internalTransfer(request: InternalTransferRequest, wallet?: WalletAdapter): Promise<ZKTransferResponse> {
     validateSolanaAddress(request.sender_wallet);
     validateSolanaAddress(request.recipient_wallet);
     
@@ -153,19 +142,25 @@ export class ShadowWireClient {
       throw new TransferError('Cannot transfer to yourself');
     }
 
-    let requestData = { ...request };
+    let requestData: any = {
+      sender_wallet: request.sender_wallet,
+      recipient_wallet: request.recipient_wallet,
+      token: request.token,
+      nonce: request.nonce,
+      amount: request.amount,
+      proof_bytes: request.proof_bytes,
+      commitment: request.commitment,
+    };
 
-    // Generate signature if wallet provided
     if (wallet?.signMessage) {
       const sigAuth = await generateTransferSignature(wallet, 'internal_transfer');
-      requestData = {
-        ...requestData,
-        ...sigAuth,
-      };
+      requestData.sender_signature = sigAuth.sender_signature;
+    } else if (request.sender_signature) {
+      requestData.sender_signature = request.sender_signature;
     }
     
     try {
-      return await makeHttpRequest<InternalTransferResponse>(
+      return await makeHttpRequest<ZKTransferResponse>(
         `${this.apiBaseUrl}/zk/internal-transfer`,
         'POST',
         this.apiKey,
@@ -197,46 +192,42 @@ export class ShadowWireClient {
     const tokenMint = TokenUtils.getTokenMint(request.token);
     const token = tokenMint === 'Native' ? 'SOL' : tokenMint;
     
-    const proofResult = await this.uploadProof({
-      sender_wallet: request.sender,
-      token: token,
-      amount: amountSmallestUnit,
-      nonce: nonce,
-    });
-    
-    const relayerFee = Math.floor(amountSmallestUnit * 0.01);
+    await initWASM();
+    const proof = await generateRangeProof(amountSmallestUnit, 64);
     
     if (request.type === 'internal') {
-      const internalResult = await this.internalTransfer({
+      const result = await this.internalTransfer({
         sender_wallet: request.sender,
         recipient_wallet: request.recipient,
         token: token,
-        nonce: proofResult.nonce,
-        relayer_fee: relayerFee,
-      });
+        nonce: nonce,
+        amount: amountSmallestUnit,
+        proof_bytes: proof.proofBytes,
+        commitment: proof.commitmentBytes,
+      }, request.wallet);
       
       return {
-        success: internalResult.success,
-        tx_signature: internalResult.tx_signature,
-        amount_sent: null,
-        amount_hidden: true,
-        proof_pda: internalResult.proof_pda,
+        success: result.success,
+        tx_signature: result.tx_signature || '',
+        amount_sent: result.amount_sent || null,
+        amount_hidden: result.amount_hidden,
       };
     } else {
-      const externalResult = await this.externalTransfer({
+      const result = await this.externalTransfer({
         sender_wallet: request.sender,
         recipient_wallet: request.recipient,
         token: token,
-        nonce: proofResult.nonce,
-        relayer_fee: relayerFee,
-      });
+        nonce: nonce,
+        amount: amountSmallestUnit,
+        proof_bytes: proof.proofBytes,
+        commitment: proof.commitmentBytes,
+      }, request.wallet);
       
       return {
-        success: externalResult.success,
-        tx_signature: externalResult.tx_signature,
-        amount_sent: externalResult.amount_sent,
-        amount_hidden: false,
-        proof_pda: externalResult.proof_pda,
+        success: result.success,
+        tx_signature: result.tx_signature || '',
+        amount_sent: result.amount_sent || null,
+        amount_hidden: result.amount_hidden,
       };
     }
   }
@@ -254,7 +245,7 @@ export class ShadowWireClient {
     }
     
     if (!isWASMSupported()) {
-      throw new TransferError('WebAssembly not supported. Use transfer() method for backend proof generation.');
+      throw new TransferError('WebAssembly not supported.');
     }
     
     const amountSmallestUnit = TokenUtils.toSmallestUnit(request.amount, request.token);
@@ -271,46 +262,39 @@ export class ShadowWireClient {
     const tokenMint = TokenUtils.getTokenMint(request.token);
     const token = tokenMint === 'Native' ? 'SOL' : tokenMint;
     
-    const proofResult = await this.uploadProof({
-      sender_wallet: request.sender,
-      token: token,
-      amount: amountSmallestUnit,
-      nonce: nonce,
-    }, request.wallet);
-    
-    const relayerFee = Math.floor(amountSmallestUnit * 0.01);
-    
     if (request.type === 'internal') {
-      const internalResult = await this.internalTransfer({
+      const result = await this.internalTransfer({
         sender_wallet: request.sender,
         recipient_wallet: request.recipient,
         token: token,
-        nonce: proofResult.nonce,
-        relayer_fee: relayerFee,
+        nonce: nonce,
+        amount: amountSmallestUnit,
+        proof_bytes: proof.proofBytes,
+        commitment: proof.commitmentBytes,
       }, request.wallet);
       
       return {
-        success: internalResult.success,
-        tx_signature: internalResult.tx_signature,
-        amount_sent: null,
-        amount_hidden: true,
-        proof_pda: internalResult.proof_pda,
+        success: result.success,
+        tx_signature: result.tx_signature || '',
+        amount_sent: result.amount_sent || null,
+        amount_hidden: result.amount_hidden,
       };
     } else {
-      const externalResult = await this.externalTransfer({
+      const result = await this.externalTransfer({
         sender_wallet: request.sender,
         recipient_wallet: request.recipient,
         token: token,
-        nonce: proofResult.nonce,
-        relayer_fee: relayerFee,
+        nonce: nonce,
+        amount: amountSmallestUnit,
+        proof_bytes: proof.proofBytes,
+        commitment: proof.commitmentBytes,
       }, request.wallet);
       
       return {
-        success: externalResult.success,
-        tx_signature: externalResult.tx_signature,
-        amount_sent: externalResult.amount_sent,
-        amount_hidden: false,
-        proof_pda: externalResult.proof_pda,
+        success: result.success,
+        tx_signature: result.tx_signature || '',
+        amount_sent: result.amount_sent || null,
+        amount_hidden: result.amount_hidden,
       };
     }
   }
@@ -322,45 +306,24 @@ export class ShadowWireClient {
     return generateRangeProof(amountSmallestUnit, 64);
   }
 
-  async authorizeSpending(request: AuthorizeSpendingRequest): Promise<AuthorizeSpendingResponse> {
-    validateSolanaAddress(request.wallet);
-    validateSolanaAddress(request.spender);
-    
-    if (request.amount <= 0) {
-      throw new InvalidAmountError('Authorization amount must be greater than zero');
-    }
-    
-    return makeHttpRequest<AuthorizeSpendingResponse>(
-      `${this.apiBaseUrl}/authorize-spending`,
-      'POST',
-      this.apiKey,
-      request,
-      this.debug
-    );
+  getFeePercentage(token: TokenSymbol): number {
+    return TOKEN_FEES[token] || TOKEN_FEES.DEFAULT;
   }
 
-  async revokeAuthorization(request: RevokeAuthorizationRequest): Promise<RevokeAuthorizationResponse> {
-    validateSolanaAddress(request.wallet);
-    
-    return makeHttpRequest<RevokeAuthorizationResponse>(
-      `${this.apiBaseUrl}/revoke-authorization`,
-      'POST',
-      this.apiKey,
-      request,
-      this.debug
-    );
+  getMinimumAmount(token: TokenSymbol): number {
+    const minSmallest = TOKEN_MINIMUMS[token] || TOKEN_MINIMUMS.DEFAULT;
+    return TokenUtils.fromSmallestUnit(minSmallest, token);
   }
 
-  async getMyAuthorizations(wallet: string): Promise<Authorization[]> {
-    validateSolanaAddress(wallet);
-    
-    return makeHttpRequest<Authorization[]>(
-      `${this.apiBaseUrl}/my-authorizations/${wallet}`,
-      'GET',
-      this.apiKey,
-      undefined,
-      this.debug
-    );
+  calculateFee(amount: number, token: TokenSymbol): { fee: number; feePercentage: number; netAmount: number } {
+    const feePercentage = this.getFeePercentage(token);
+    const fee = amount * feePercentage;
+    return {
+      fee,
+      feePercentage,
+      netAmount: amount - fee,
+    };
   }
+
 }
 

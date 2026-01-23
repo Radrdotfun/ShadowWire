@@ -1,12 +1,9 @@
 import init, { generate_range_proof, verify_range_proof, ZKProofResult } from '../wasm/settler_wasm';
 import { ZKProofData } from './types';
-import { ProofGenerationError, WASMNotSupportedError } from './errors';
+import { ProofGenerationError } from './errors';
 
 let wasmInitialized = false;
 
-/**
- * Detects if running in Node.js environment (not bundled for browser)
- */
 function isNode(): boolean {
   return typeof process !== 'undefined' && 
          process.versions != null && 
@@ -14,50 +11,64 @@ function isNode(): boolean {
          typeof window === 'undefined';
 }
 
-/**
- * Initializes WASM module for Node.js environment
- * Uses dynamic require hidden from bundlers
- */
-async function initWASMNode(): Promise<void> {
-  // Use Function constructor to hide require from bundlers
-  // This prevents webpack/rspack from trying to resolve these modules
-  const dynamicRequire = new Function('moduleName', 'return require(moduleName)');
+export async function initWASM(wasmUrl?: string): Promise<void> {
+  if (wasmInitialized) {
+    return;
+  }
   
   try {
-    const path = dynamicRequire('path');
-    const fs = dynamicRequire('fs');
-    
-    const wasmPaths = [
-      path.join(__dirname, '../wasm/settler_wasm_bg.wasm'),
-      path.join(process.cwd(), 'wasm/settler_wasm_bg.wasm'),
-      path.join(process.cwd(), 'dist/wasm/settler_wasm_bg.wasm'),
-      path.join(process.cwd(), 'node_modules/@radr/shadowwire/dist/wasm/settler_wasm_bg.wasm'),
-    ];
-    
-    let wasmPath: string | undefined;
-    for (const p of wasmPaths) {
-      if (fs.existsSync(p)) {
-        wasmPath = p;
-        break;
-      }
+    if (isNode()) {
+      await initWASMNode();
+    } else {
+      await initWASMBrowser(wasmUrl);
     }
-    
-    if (!wasmPath) {
-      throw new Error('WASM file not found in any expected location');
-    }
-    
-    const wasmBuffer = fs.readFileSync(wasmPath);
-    await init(wasmBuffer);
+    wasmInitialized = true;
   } catch (error: any) {
-    throw new Error(`Node.js WASM initialization failed: ${error.message}`);
+    throw new ProofGenerationError(`Could not load WASM: ${error.message}`);
   }
 }
 
-/**
- * Initializes WASM module for browser environment
- */
+async function initWASMNode(): Promise<void> {
+  const getRequire = new Function('return typeof require !== "undefined" ? require : null');
+  const nodeRequire = getRequire();
+  
+  if (!nodeRequire) {
+    throw new Error('Node.js require not available');
+  }
+  
+  const path = nodeRequire('path');
+  const fs = nodeRequire('fs');
+  
+  const wasmPaths = [
+    path.join(__dirname, '../wasm/settler_wasm_bg.wasm'),
+    path.join(__dirname, '../../wasm/settler_wasm_bg.wasm'),
+    path.join(process.cwd(), 'wasm/settler_wasm_bg.wasm'),
+    path.join(process.cwd(), 'dist/wasm/settler_wasm_bg.wasm'),
+    path.join(process.cwd(), 'node_modules/@radr/shadowwire/wasm/settler_wasm_bg.wasm'),
+    path.join(process.cwd(), 'node_modules/@radr/shadowwire/dist/wasm/settler_wasm_bg.wasm'),
+  ];
+  
+  let wasmBuffer: Buffer | null = null;
+  
+  for (const wasmPath of wasmPaths) {
+    try {
+      if (fs.existsSync(wasmPath)) {
+        wasmBuffer = fs.readFileSync(wasmPath);
+        break;
+      }
+    } catch (e) {
+      continue;
+    }
+  }
+  
+  if (!wasmBuffer) {
+    throw new Error('WASM file not found. Searched paths: ' + wasmPaths.join(', '));
+  }
+  
+  await init(wasmBuffer);
+}
+
 async function initWASMBrowser(wasmUrl?: string): Promise<void> {
-  // Default WASM URLs to try in browser
   const defaultUrls = [
     '/wasm/settler_wasm_bg.wasm',
     './wasm/settler_wasm_bg.wasm',
@@ -72,58 +83,18 @@ async function initWASMBrowser(wasmUrl?: string): Promise<void> {
     try {
       const response = await fetch(url);
       if (!response.ok) {
-        throw new Error(`Failed to fetch WASM: ${response.status} ${response.statusText}`);
+        throw new Error(`HTTP ${response.status}`);
       }
       
       const wasmBuffer = await response.arrayBuffer();
       await init(wasmBuffer);
-      return; // Success!
+      return;
     } catch (error: any) {
       lastError = error;
-      // Continue to next URL
     }
   }
   
-  throw new Error(
-    `Could not load WASM from any location. Last error: ${lastError?.message}. ` +
-    `In browser environments, ensure the WASM file is served at one of: ${urlsToTry.join(', ')}`
-  );
-}
-
-/**
- * Initializes the WASM module. Must be called before using proof functions.
- * 
- * @param wasmUrl - (Browser only) Optional custom URL to the WASM file.
- *                  If not provided, will try default paths: /wasm/settler_wasm_bg.wasm, 
- *                  ./wasm/settler_wasm_bg.wasm, ../wasm/settler_wasm_bg.wasm
- * 
- * @example
- * // Node.js
- * await initWASM();
- * 
- * @example
- * // Browser with default path
- * await initWASM();
- * 
- * @example
- * // Browser with custom path
- * await initWASM('/public/wasm/settler_wasm_bg.wasm');
- */
-export async function initWASM(wasmUrl?: string): Promise<void> {
-  if (wasmInitialized) {
-    return;
-  }
-  
-  try {
-    if (isNode()) {
-      await initWASMNode();
-    } else {
-      await initWASMBrowser(wasmUrl);
-    }
-    wasmInitialized = true;
-  } catch (error: any) {
-    throw new ProofGenerationError(`Could not load cryptography module: ${error.message}`);
-  }
+  throw new Error(`Failed to load WASM: ${lastError?.message}`);
 }
 
 export async function generateRangeProof(
@@ -188,6 +159,13 @@ export function isWASMSupported(): boolean {
   }
 }
 
+export const BULLETPROOF_INFO = {
+  PROOF_SIZE: 672,
+  COMMITMENT_SIZE: 32,
+  DEFAULT_BIT_LENGTH: 64,
+  ON_CHAIN_CU: 45000,
+};
+
 function uint8ArrayToHex(bytes: Uint8Array): string {
   return Array.from(bytes)
     .map(byte => byte.toString(16).padStart(2, '0'))
@@ -205,4 +183,3 @@ function hexToUint8Array(hex: string): Uint8Array {
   }
   return bytes;
 }
-

@@ -11,11 +11,9 @@ async function externalTransferSOL() {
     type: 'external',
   });
 
-  console.log('External transfer complete');
-  console.log('Transaction signature:', result.tx_signature);
-  console.log('Amount sent:', result.amount_sent, 'lamports');
-  console.log('Amount hidden:', result.amount_hidden);
-  console.log('Proof PDA:', result.proof_pda);
+  console.log('Transaction:', result.tx_signature);
+  console.log('Amount:', result.amount_sent);
+  console.log('Hidden:', result.amount_hidden);
 }
 
 async function externalTransferUSDC() {
@@ -29,12 +27,11 @@ async function externalTransferUSDC() {
     type: 'external',
   });
 
-  console.log('USDC external transfer complete');
-  console.log('TX:', result.tx_signature);
-  console.log('Amount sent:', result.amount_sent, 'micro-USDC');
+  console.log('Transaction:', result.tx_signature);
+  console.log('Amount:', result.amount_sent);
 }
 
-async function externalTransferMultipleTokens() {
+async function externalTransferBONK() {
   const client = new ShadowWireClient();
 
   const result = await client.transfer({
@@ -45,26 +42,23 @@ async function externalTransferMultipleTokens() {
     type: 'external',
   });
 
-  console.log('BONK transfer complete');
-  console.log('TX:', result.tx_signature);
+  console.log('Transaction:', result.tx_signature);
 }
 
 async function transferToAnyWallet() {
   const client = new ShadowWireClient();
-
-  const recipientAddress = 'ANY_SOLANA_WALLET_ADDRESS';
+  const recipient = 'ANY_SOLANA_WALLET_ADDRESS';
 
   const result = await client.transfer({
     sender: 'YOUR_WALLET_ADDRESS',
-    recipient: recipientAddress,
+    recipient: recipient,
     amount: 0.5,
     token: 'SOL',
     type: 'external',
   });
 
-  console.log(`Sent 0.5 SOL to ${recipientAddress}`);
+  console.log('Sent to', recipient);
   console.log('Transaction:', result.tx_signature);
-  console.log('The amount is visible on-chain');
 }
 
 externalTransferSOL().catch(console.error);

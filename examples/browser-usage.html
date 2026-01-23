@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ShadowWire - Browser Example</title>
+    <title>ShadowWire Browser Example</title>
     <style>
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: system-ui, -apple-system, sans-serif;
             max-width: 800px;
             margin: 50px auto;
             padding: 20px;
@@ -15,12 +15,12 @@
         .container {
             background: white;
             padding: 30px;
-            border-radius: 10px;
+            border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         h1 {
             color: #333;
-            border-bottom: 3px solid #4CAF50;
+            border-bottom: 2px solid #333;
             padding-bottom: 10px;
         }
         .section {
@@ -29,29 +29,29 @@
         label {
             display: block;
             margin: 10px 0 5px;
-            font-weight: bold;
+            font-weight: 600;
             color: #555;
         }
         input {
             width: 100%;
             padding: 10px;
             border: 1px solid #ddd;
-            border-radius: 5px;
+            border-radius: 4px;
             font-size: 14px;
             box-sizing: border-box;
         }
         button {
-            background: #4CAF50;
+            background: #333;
             color: white;
-            padding: 12px 30px;
+            padding: 12px 24px;
             border: none;
-            border-radius: 5px;
+            border-radius: 4px;
             cursor: pointer;
-            font-size: 16px;
+            font-size: 14px;
             margin: 10px 5px 10px 0;
         }
         button:hover {
-            background: #45a049;
+            background: #555;
         }
         button:disabled {
             background: #ccc;
@@ -60,10 +60,10 @@
         .output {
             background: #f9f9f9;
             border: 1px solid #ddd;
-            border-radius: 5px;
+            border-radius: 4px;
             padding: 15px;
             margin: 10px 0;
-            font-family: 'Courier New', monospace;
+            font-family: monospace;
             font-size: 12px;
             word-break: break-all;
             max-height: 300px;
@@ -71,7 +71,7 @@
         }
         .status {
             padding: 10px;
-            border-radius: 5px;
+            border-radius: 4px;
             margin: 10px 0;
         }
         .status.success {
@@ -89,168 +89,187 @@
             color: #0c5460;
             border: 1px solid #bee5eb;
         }
+        pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 13px;
+        }
+        code {
+            font-family: 'Consolas', 'Monaco', monospace;
+        }
+        .note {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 12px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🔒 ShadowWire Browser Example</h1>
+        <h1>ShadowWire Browser Example</h1>
         
-        <div class="section">
-            <p><strong>Note:</strong> This example demonstrates using ShadowWire SDK in a browser environment. 
-            Make sure the WASM file is properly served from your web server.</p>
+        <div class="note">
+            This example requires bundling with webpack, vite, or similar. 
+            Copy the WASM file to your public folder before running.
         </div>
 
         <div class="section">
-            <h3>Step 1: Initialize WASM</h3>
-            <label for="wasmUrl">WASM File URL (optional - uses default if empty):</label>
-            <input type="text" id="wasmUrl" placeholder="/wasm/settler_wasm_bg.wasm">
-            <button id="initBtn" onclick="initializeWASM()">Initialize</button>
-            <div id="initStatus"></div>
+            <h3>Setup</h3>
+            <pre><code>npm install @radr/shadowwire
+
+cp node_modules/@radr/shadowwire/dist/wasm/settler_wasm_bg.wasm public/wasm/</code></pre>
         </div>
 
         <div class="section">
-            <h3>Step 2: Generate Range Proof</h3>
-            <label for="amount">Amount (integer):</label>
-            <input type="number" id="amount" value="1000" min="0">
-            
-            <label for="bitLength">Bit Length:</label>
-            <input type="number" id="bitLength" value="64" min="8" max="64" step="8">
-            
-            <button id="generateBtn" onclick="generateProof()" disabled>Generate Proof</button>
-            <div id="generateStatus"></div>
-            <div id="proofOutput" class="output" style="display:none;"></div>
+            <h3>1. Initialize WASM</h3>
+<pre><code>import { initWASM, isWASMSupported } from '@radr/shadowwire';
+
+if (!isWASMSupported()) {
+  throw new Error('WebAssembly not supported');
+}
+
+await initWASM('/wasm/settler_wasm_bg.wasm');</code></pre>
         </div>
 
         <div class="section">
-            <h3>Step 3: Verify Range Proof</h3>
-            <button id="verifyBtn" onclick="verifyProof()" disabled>Verify Generated Proof</button>
-            <div id="verifyStatus"></div>
+            <h3>2. Generate Range Proof</h3>
+<pre><code>import { generateRangeProof } from '@radr/shadowwire';
+
+const amount = 100000000;
+const proof = await generateRangeProof(amount, 64);
+
+console.log('Proof:', proof.proofBytes);
+console.log('Commitment:', proof.commitmentBytes);
+console.log('Blinding Factor:', proof.blindingFactorBytes);</code></pre>
+        </div>
+
+        <div class="section">
+            <h3>3. Verify Proof</h3>
+<pre><code>import { verifyRangeProof } from '@radr/shadowwire';
+
+const isValid = await verifyRangeProof(
+  proof.proofBytes,
+  proof.commitmentBytes,
+  64
+);
+
+console.log('Valid:', isValid);</code></pre>
+        </div>
+
+        <div class="section">
+            <h3>4. Make a Transfer</h3>
+<pre><code>import { ShadowWireClient } from '@radr/shadowwire';
+
+const client = new ShadowWireClient();
+
+const result = await client.transfer({
+  sender: 'YOUR_WALLET_ADDRESS',
+  recipient: 'RECIPIENT_WALLET_ADDRESS',
+  amount: 0.1,
+  token: 'SOL',
+  type: 'internal',
+  wallet: { signMessage }
+});
+
+console.log('Transaction:', result.tx_signature);
+console.log('Amount Hidden:', result.amount_hidden);</code></pre>
+        </div>
+
+        <div class="section">
+            <h3>5. Transfer with Custom Proof</h3>
+<pre><code>import { ShadowWireClient, generateRangeProof, initWASM } from '@radr/shadowwire';
+
+await initWASM();
+
+const client = new ShadowWireClient();
+const amountLamports = 100000000;
+
+const proof = await generateRangeProof(amountLamports, 64);
+
+const result = await client.transferWithClientProofs({
+  sender: 'YOUR_WALLET_ADDRESS',
+  recipient: 'RECIPIENT_WALLET_ADDRESS',
+  amount: 0.1,
+  token: 'SOL',
+  type: 'internal',
+  customProof: proof,
+  wallet: { signMessage }
+});
+
+console.log('Transaction:', result.tx_signature);</code></pre>
+        </div>
+
+        <div class="section">
+            <h3>6. Check Balance and Fee Info</h3>
+<pre><code>import { ShadowWireClient } from '@radr/shadowwire';
+
+const client = new ShadowWireClient();
+
+const balance = await client.getBalance('YOUR_WALLET_ADDRESS', 'SOL');
+console.log('Available:', balance.available / 1e9, 'SOL');
+
+const feePercent = client.getFeePercentage('SOL');
+const minimum = client.getMinimumAmount('SOL');
+const breakdown = client.calculateFee(1.0, 'SOL');
+
+console.log('Fee:', feePercent * 100, '%');
+console.log('Minimum:', minimum, 'SOL');
+console.log('Net amount for 1 SOL:', breakdown.netAmount);</code></pre>
+        </div>
+
+        <div class="section">
+            <h3>Full React Example</h3>
+<pre><code>import { useState, useEffect } from 'react';
+import { ShadowWireClient, initWASM, isWASMSupported } from '@radr/shadowwire';
+
+function Transfer({ userWallet, signMessage }) {
+  const [client] = useState(() => new ShadowWireClient());
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    async function init() {
+      if (isWASMSupported()) {
+        await initWASM('/wasm/settler_wasm_bg.wasm');
+        setReady(true);
+      }
+    }
+    init();
+  }, []);
+
+  const handleTransfer = async () => {
+    const result = await client.transfer({
+      sender: userWallet,
+      recipient: 'RECIPIENT_ADDRESS',
+      amount: 0.1,
+      token: 'SOL',
+      type: 'internal',
+      wallet: { signMessage }
+    });
+    console.log('Done:', result.tx_signature);
+  };
+
+  return (
+    &lt;button onClick={handleTransfer} disabled={!ready}&gt;
+      Send 0.1 SOL
+    &lt;/button&gt;
+  );
+}</code></pre>
+        </div>
+
+        <div class="section">
+            <h3>Bulletproof Info</h3>
+<pre><code>import { BULLETPROOF_INFO } from '@radr/shadowwire';
+
+console.log('Proof Size:', BULLETPROOF_INFO.PROOF_SIZE, 'bytes');
+console.log('Commitment Size:', BULLETPROOF_INFO.COMMITMENT_SIZE);
+console.log('Default Bit Length:', BULLETPROOF_INFO.DEFAULT_BIT_LENGTH);
+console.log('On-Chain CU:', BULLETPROOF_INFO.ON_CHAIN_CU);</code></pre>
         </div>
     </div>
-
-    <!-- In a real application, you would bundle this with webpack/vite/etc -->
-    <!-- For this example, we'll use a module script -->
-    <script type="module">
-        // In production, you would import from your bundle:
-        // import { initWASM, generateRangeProof, verifyRangeProof } from '@radr/shadowwire';
-        
-        // For this demo, we'll define placeholder functions
-        // You need to bundle the library with a tool like webpack or vite
-        
-        let currentProof = null;
-
-        window.initializeWASM = async function() {
-            const btn = document.getElementById('initBtn');
-            const status = document.getElementById('initStatus');
-            const wasmUrl = document.getElementById('wasmUrl').value || undefined;
-            
-            btn.disabled = true;
-            status.className = 'status info';
-            status.textContent = '⏳ Initializing WASM module...';
-            
-            try {
-                // In production, uncomment this:
-                // await initWASM(wasmUrl);
-                
-                // Simulated for demo:
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                
-                status.className = 'status success';
-                status.textContent = '✅ WASM initialized successfully! You can now generate proofs.';
-                
-                document.getElementById('generateBtn').disabled = false;
-            } catch (error) {
-                status.className = 'status error';
-                status.textContent = `❌ Initialization failed: ${error.message}`;
-                btn.disabled = false;
-            }
-        };
-
-        window.generateProof = async function() {
-            const btn = document.getElementById('generateBtn');
-            const status = document.getElementById('generateStatus');
-            const output = document.getElementById('proofOutput');
-            const amount = parseInt(document.getElementById('amount').value);
-            const bitLength = parseInt(document.getElementById('bitLength').value);
-            
-            btn.disabled = true;
-            status.className = 'status info';
-            status.textContent = '⏳ Generating zero-knowledge proof...';
-            output.style.display = 'none';
-            
-            try {
-                // In production, uncomment this:
-                // currentProof = await generateRangeProof(amount, bitLength);
-                
-                // Simulated for demo:
-                await new Promise(resolve => setTimeout(resolve, 1500));
-                currentProof = {
-                    proofBytes: '0x' + Array(128).fill(0).map(() => Math.floor(Math.random() * 16).toString(16)).join(''),
-                    commitmentBytes: '0x' + Array(64).fill(0).map(() => Math.floor(Math.random() * 16).toString(16)).join(''),
-                    blindingFactorBytes: '0x' + Array(64).fill(0).map(() => Math.floor(Math.random() * 16).toString(16)).join('')
-                };
-                
-                status.className = 'status success';
-                status.textContent = `✅ Proof generated successfully for amount: ${amount}`;
-                
-                output.innerHTML = `
-                    <strong>Proof Data:</strong><br>
-                    <strong>Proof:</strong> ${currentProof.proofBytes}<br><br>
-                    <strong>Commitment:</strong> ${currentProof.commitmentBytes}<br><br>
-                    <strong>Blinding Factor:</strong> ${currentProof.blindingFactorBytes}
-                `;
-                output.style.display = 'block';
-                
-                document.getElementById('verifyBtn').disabled = false;
-            } catch (error) {
-                status.className = 'status error';
-                status.textContent = `❌ Proof generation failed: ${error.message}`;
-            } finally {
-                btn.disabled = false;
-            }
-        };
-
-        window.verifyProof = async function() {
-            if (!currentProof) {
-                alert('Please generate a proof first');
-                return;
-            }
-            
-            const btn = document.getElementById('verifyBtn');
-            const status = document.getElementById('verifyStatus');
-            const bitLength = parseInt(document.getElementById('bitLength').value);
-            
-            btn.disabled = true;
-            status.className = 'status info';
-            status.textContent = '⏳ Verifying proof...';
-            
-            try {
-                // In production, uncomment this:
-                // const isValid = await verifyRangeProof(
-                //     currentProof.proofBytes,
-                //     currentProof.commitmentBytes,
-                //     bitLength
-                // );
-                
-                // Simulated for demo:
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                const isValid = true;
-                
-                if (isValid) {
-                    status.className = 'status success';
-                    status.textContent = '✅ Proof is VALID! The amount is within the specified range without revealing it.';
-                } else {
-                    status.className = 'status error';
-                    status.textContent = '❌ Proof is INVALID!';
-                }
-            } catch (error) {
-                status.className = 'status error';
-                status.textContent = `❌ Verification failed: ${error.message}`;
-            } finally {
-                btn.disabled = false;
-            }
-        };
-    </script>
 </body>
 </html>
-
