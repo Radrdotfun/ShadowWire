@@ -122,24 +122,7 @@ function takeFromExternrefTable0(idx) {
     wasm.__externref_table_dealloc(idx);
     return value;
 }
-/**
- * Generate a Bulletproofs range proof for a given amount
- *
- * This uses curve25519/Ristretto, matching the on-chain Solana verifier.
- *
- * # Arguments
- * * `amount` - The value to prove is in range [0, 2^bit_length)
- * * `bit_length` - Number of bits for range proof (typically 64 for u64 amounts)
- *
- * # Returns
- * ZKProofResult containing proof, commitment, and blinding factor
- *
- * # Errors
- * Returns JsValue error if proof generation fails
- * @param {bigint} amount
- * @param {number} bit_length
- * @returns {ZKProofResult}
- */
+
 export function generate_range_proof(amount, bit_length) {
     const ret = wasm.generate_range_proof(amount, bit_length);
     if (ret[2]) {
@@ -148,9 +131,6 @@ export function generate_range_proof(amount, bit_length) {
     return ZKProofResult.__wrap(ret[0]);
 }
 
-/**
- * Initialize panic hook for better error messages in browser console
- */
 export function init() {
     wasm.init();
 }
@@ -161,24 +141,7 @@ function passArray8ToWasm0(arg, malloc) {
     WASM_VECTOR_LEN = arg.length;
     return ptr;
 }
-/**
- * Verify a range proof (optional client-side pre-check)
- *
- * This is useful for validating proofs before submitting to the chain,
- * but the on-chain verifier is the source of truth.
- *
- * # Arguments
- * * `proof_bytes` - The serialized proof
- * * `commitment_bytes` - The Pedersen commitment (32 bytes)
- * * `bit_length` - Number of bits for range proof
- *
- * # Returns
- * true if proof is valid, false otherwise
- * @param {Uint8Array} proof_bytes
- * @param {Uint8Array} commitment_bytes
- * @param {number} bit_length
- * @returns {boolean}
- */
+
 export function verify_range_proof(proof_bytes, commitment_bytes, bit_length) {
     const ptr0 = passArray8ToWasm0(proof_bytes, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
@@ -194,9 +157,7 @@ export function verify_range_proof(proof_bytes, commitment_bytes, bit_length) {
 const ZKProofResultFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_zkproofresult_free(ptr >>> 0, 1));
-/**
- * Result of proof generation containing all necessary data for ZK transfer
- */
+
 export class ZKProofResult {
 
     static __wrap(ptr) {
@@ -218,30 +179,21 @@ export class ZKProofResult {
         const ptr = this.__destroy_into_raw();
         wasm.__wbg_zkproofresult_free(ptr, 0);
     }
-    /**
-     * Get the Bulletproof range proof bytes (672 bytes for 64-bit range)
-     * @returns {Uint8Array}
-     */
+
     get proof_bytes() {
         const ret = wasm.zkproofresult_proof_bytes(this.__wbg_ptr);
         var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
         return v1;
     }
-    /**
-     * Get the Pedersen commitment bytes (32 bytes)
-     * @returns {Uint8Array}
-     */
+
     get commitment_bytes() {
         const ret = wasm.zkproofresult_commitment_bytes(this.__wbg_ptr);
         var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
         wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
         return v1;
     }
-    /**
-     * Get the blinding factor bytes (32 bytes)
-     * @returns {Uint8Array}
-     */
+
     get blinding_factor_bytes() {
         const ret = wasm.zkproofresult_blinding_factor_bytes(this.__wbg_ptr);
         var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
@@ -405,12 +357,10 @@ function __wbg_get_imports() {
         return ret;
     };
     imports.wbg.__wbindgen_cast_2241b6af4c4b2941 = function(arg0, arg1) {
-        // Cast intrinsic for `Ref(String) -> Externref`.
         const ret = getStringFromWasm0(arg0, arg1);
         return ret;
     };
     imports.wbg.__wbindgen_cast_cb9088102bce6b30 = function(arg0, arg1) {
-        // Cast intrinsic for `Ref(Slice(U8)) -> NamedExternref("Uint8Array")`.
         const ret = getArrayU8FromWasm0(arg0, arg1);
         return ret;
     };
