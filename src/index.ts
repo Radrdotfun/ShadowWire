@@ -61,3 +61,23 @@ export type {
 } from './types';
 
 export { TOKEN_FEES, TOKEN_MINIMUMS, TOKEN_MINTS, TOKEN_DECIMALS } from './constants';
+
+export {
+  X402Client,
+  x402Paywall,
+  createPaymentRequired,
+  verifyPayment,
+  settlePayment,
+  createDiscoveryDocument,
+} from './x402';
+export type {
+  X402PaymentRequirement,
+  X402Response,
+  X402PaymentResult,
+  X402RequestResult,
+  X402ClientConfig,
+  X402VerifyResult,
+  X402MiddlewareConfig,
+  X402PaymentProof,
+  X402DiscoveryResource,
+} from './x402';
