@@ -20,6 +20,13 @@ import { TokenSymbol, WalletAdapter, TransferResponse, PoolBalance } from './typ
 import { NetworkError } from './errors';
 
 // ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const DEFAULT_TIMEOUT_MS = 15_000;
+const MAX_PAYMENT_HEADER_BYTES = 16_384;
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -74,6 +81,8 @@ export interface X402ClientConfig {
   defaultTransferType?: 'internal' | 'external';
   maxRetries?: number;
   headers?: Record<string, string>;
+  /** Timeout for HTTP requests in milliseconds. */
+  requestTimeoutMs?: number;
 }
 
 export interface X402VerifyResult {
@@ -112,6 +121,35 @@ export interface X402PaymentProof {
 }
 
 // ---------------------------------------------------------------------------
+// Encoding helpers (cross-platform: Node + browser)
+// ---------------------------------------------------------------------------
+
+function toBase64(input: string): string {
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(input, 'utf-8').toString('base64');
+  }
+  return btoa(input);
+}
+
+function fromBase64(encoded: string): string {
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(encoded, 'base64').toString('utf-8');
+  }
+  return atob(encoded);
+}
+
+function byteLength(str: string): number {
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.byteLength(str, 'utf-8');
+  }
+  return new TextEncoder().encode(str).length;
+}
+
+function isShadowwire(scheme: string): boolean {
+  return scheme === 'shadowwire' || scheme === 'shadow';
+}
+
+// ---------------------------------------------------------------------------
 // Client (payer side)
 // ---------------------------------------------------------------------------
 
@@ -123,6 +161,7 @@ export class X402Client {
   private defaultTransferType: 'internal' | 'external';
   private maxRetries: number;
   private headers: Record<string, string>;
+  private timeoutMs: number;
 
   constructor(config: X402ClientConfig) {
     this.client = config.client;
@@ -132,6 +171,7 @@ export class X402Client {
     this.defaultTransferType = config.defaultTransferType || 'external';
     this.maxRetries = config.maxRetries ?? 1;
     this.headers = config.headers || {};
+    this.timeoutMs = config.requestTimeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
   /**
@@ -154,12 +194,12 @@ export class X402Client {
           statusCode: response.status,
         };
       }
-      const data = await response.json() as T;
+      const data = await safeParseBody<T>(response);
       return { success: true, data, statusCode: response.status };
     }
 
-    const x402Body = await response.json() as X402Response;
-    if (!x402Body.accepts || x402Body.accepts.length === 0) {
+    const x402Body = await safeParseBody<X402Response>(response);
+    if (!x402Body?.accepts || x402Body.accepts.length === 0) {
       return { success: false, error: 'No accepted payment methods in 402 response', statusCode: 402 };
     }
 
@@ -180,7 +220,7 @@ export class X402Client {
       });
 
       if (retryResponse.ok) {
-        const data = await retryResponse.json() as T;
+        const data = await safeParseBody<T>(retryResponse);
         return {
           success: true,
           data,
@@ -209,6 +249,10 @@ export class X402Client {
    * Pay a specific x402 requirement via ShadowWire.
    */
   async pay(requirement: X402PaymentRequirement): Promise<X402PaymentResult> {
+    if (!isShadowwire(requirement.scheme)) {
+      return { success: false, error: `Unsupported scheme: ${requirement.scheme}` };
+    }
+
     const amount = this.parseAmount(requirement.amount, requirement.asset);
     if (amount <= 0) {
       return { success: false, error: 'Invalid payment amount' };
@@ -276,12 +320,13 @@ export class X402Client {
   }
 
   static encodePaymentHeader(proof: X402PaymentProof): string {
-    return Buffer.from(JSON.stringify(proof)).toString('base64');
+    return toBase64(JSON.stringify(proof));
   }
 
   static decodePaymentHeader(header: string): X402PaymentProof | null {
     try {
-      const decoded = JSON.parse(Buffer.from(header, 'base64').toString());
+      if (byteLength(header) > MAX_PAYMENT_HEADER_BYTES) return null;
+      const decoded = JSON.parse(fromBase64(header));
       if (!decoded.scheme || !decoded.payload?.signature) return null;
       return decoded as X402PaymentProof;
     } catch {
@@ -292,9 +337,7 @@ export class X402Client {
   // --- Private ---
 
   private findCompatibleRequirement(accepts: X402PaymentRequirement[]): X402PaymentRequirement | null {
-    const shadowReq = accepts.find((r) =>
-      r.scheme === 'shadowwire' || r.scheme === 'shadow'
-    );
+    const shadowReq = accepts.find((r) => isShadowwire(r.scheme));
     if (shadowReq) return shadowReq;
 
     return accepts.find((r) => r.network?.includes('solana')) || null;
@@ -323,12 +366,22 @@ export class X402Client {
   }
 
   private async doFetch(url: string, options?: RequestInit): Promise<Response> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
-      return await (globalThis as any).fetch(url, options);
+      return await (globalThis as any).fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        throw new NetworkError(`x402 request timed out after ${this.timeoutMs}ms`);
+      }
       throw new NetworkError(
         err instanceof Error ? `x402 request failed: ${err.message}` : 'x402 request failed'
       );
+    } finally {
+      clearTimeout(timer);
     }
   }
 }
@@ -336,6 +389,38 @@ export class X402Client {
 // ---------------------------------------------------------------------------
 // Server middleware (payee side)
 // ---------------------------------------------------------------------------
+
+/**
+ * Safely parse JSON from a response, checking content-type first.
+ */
+async function safeParseBody<T>(response: Response): Promise<T | undefined> {
+  const ct = response.headers?.get?.('content-type') || '';
+  if (!ct.includes('application/json') && !ct.includes('text/json')) {
+    try {
+      return await response.json() as T;
+    } catch {
+      return undefined;
+    }
+  }
+  return response.json() as Promise<T>;
+}
+
+/**
+ * Timed fetch to an external service (facilitator).
+ */
+async function timedFetch(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await (globalThis as any).fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
  * Create a 402 payment requirement response body.
@@ -390,8 +475,12 @@ export async function verifyPayment(
   requirement: X402PaymentRequirement,
   facilitatorUrl: string
 ): Promise<X402VerifyResult> {
+  if (byteLength(paymentHeader) > MAX_PAYMENT_HEADER_BYTES) {
+    return { valid: false, error: 'Payment header exceeds size limit' };
+  }
+
   try {
-    const response = await (globalThis as any).fetch(`${facilitatorUrl}/verify`, {
+    const response = await timedFetch(`${facilitatorUrl}/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -435,7 +524,7 @@ export async function settlePayment(
   facilitatorUrl: string
 ): Promise<{ success: boolean; tx?: string; error?: string }> {
   try {
-    const response = await (globalThis as any).fetch(`${facilitatorUrl}/settle`, {
+    const response = await timedFetch(`${facilitatorUrl}/settle`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -488,6 +577,22 @@ export function x402Paywall(config: X402MiddlewareConfig) {
       const body = createPaymentRequired(resource, config);
       res.setHeader?.('WWW-Authenticate', 'X402');
       res.setHeader?.('X-Payment-Schemes', 'shadowwire');
+      res.setHeader?.('Cache-Control', 'no-store');
+      return res.status(402).json(body);
+    }
+
+    // Reject oversized headers before hitting the facilitator.
+    if (byteLength(paymentHeader) > MAX_PAYMENT_HEADER_BYTES) {
+      return res.status(400).json({ error: 'Payment header too large' });
+    }
+
+    // Decode and validate the proof structure early.
+    const proof = X402Client.decodePaymentHeader(paymentHeader);
+    if (!proof || !isShadowwire(proof.scheme)) {
+      const body = createPaymentRequired(resource, config);
+      (body as any).verifyError = 'Invalid or unsupported payment proof';
+      res.setHeader?.('WWW-Authenticate', 'X402');
+      res.setHeader?.('Cache-Control', 'no-store');
       return res.status(402).json(body);
     }
 
@@ -509,6 +614,7 @@ export function x402Paywall(config: X402MiddlewareConfig) {
       const body = createPaymentRequired(resource, config);
       (body as any).verifyError = verifyResult.error;
       res.setHeader?.('WWW-Authenticate', 'X402');
+      res.setHeader?.('Cache-Control', 'no-store');
       return res.status(402).json(body);
     }
 
@@ -517,6 +623,7 @@ export function x402Paywall(config: X402MiddlewareConfig) {
       const body = createPaymentRequired(resource, config);
       (body as any).settleError = settleResult.error;
       res.setHeader?.('WWW-Authenticate', 'X402');
+      res.setHeader?.('Cache-Control', 'no-store');
       return res.status(402).json(body);
     }
 

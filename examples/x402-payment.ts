@@ -34,6 +34,7 @@ async function clientExample() {
     // 'external' = sender anonymous, amount visible
     // 'internal' = both parties private, amount hidden
     defaultTransferType: 'external',
+    requestTimeoutMs: 20_000,
   });
 
   // Automatic flow: request -> detect 402 -> pay -> retry
