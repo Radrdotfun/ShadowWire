@@ -1,10 +1,3 @@
-/**
- * x402 Payment Protocol examples.
- *
- * Shows both client-side (paying for APIs) and server-side (monetizing APIs)
- * usage with ShadowWire private transfers.
- */
-
 import {
   ShadowWireClient,
   X402Client,
@@ -12,14 +5,9 @@ import {
   createDiscoveryDocument,
 } from '@radr/shadowwire';
 
-// ---------------------------------------------------------------------------
-// Client: Paying for a paid API endpoint
-// ---------------------------------------------------------------------------
-
 async function clientExample() {
   const client = new ShadowWireClient();
 
-  // Use @solana/wallet-adapter in real apps
   const wallet = {
     signMessage: async (message: Uint8Array) => {
       throw new Error('Implement wallet signing');
@@ -31,13 +19,10 @@ async function clientExample() {
     wallet,
     senderWallet: 'YOUR_WALLET_ADDRESS',
     defaultToken: 'USDC',
-    // 'external' = sender anonymous, amount visible
-    // 'internal' = both parties private, amount hidden
     defaultTransferType: 'external',
     requestTimeoutMs: 20_000,
   });
 
-  // Automatic flow: request -> detect 402 -> pay -> retry
   const result = await x402.request('https://api.example.com/data');
 
   if (result.success) {
@@ -48,7 +33,6 @@ async function clientExample() {
     }
   }
 
-  // Manual flow: parse 402 and pay individually
   const response = await fetch('https://api.example.com/premium');
   if (response.status === 402) {
     const body = await response.json();
@@ -57,7 +41,6 @@ async function clientExample() {
       const req = requirements.accepts[0];
       const payment = await x402.pay(req);
       if (payment.success) {
-        // Retry with payment header
         await fetch('https://api.example.com/premium', {
           headers: { 'X-Payment': payment.paymentHeader! },
         });
@@ -66,40 +49,27 @@ async function clientExample() {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Server: Monetizing API endpoints with Express
-// ---------------------------------------------------------------------------
-
 async function serverExample() {
-  // Requires: npm install express
   const express = require('express');
   const app = express();
 
-  // Protect an endpoint: requests without payment get a 402 response.
-  // ShadowWire payments are verified automatically.
   app.get(
     '/api/data',
     x402Paywall({
       payTo: 'YOUR_MERCHANT_WALLET',
-      amount: 0.01, // $0.01 USDC
+      amount: 0.01,
       asset: 'USDC',
       description: 'Premium data endpoint',
-      // Optional: also accept payments via PayAI facilitator
       facilitatorUrl: 'https://facilitator.payai.network',
       onPayment: (info) => {
         console.log(`Payment from ${info.payer}: ${info.signature}`);
       },
     }),
     (req: any, res: any) => {
-      // req.x402 contains payment details
-      res.json({
-        data: 'premium content',
-        payment: req.x402,
-      });
+      res.json({ data: 'premium content', payment: req.x402 });
     }
   );
 
-  // Discovery document for agents to find your paid endpoints
   app.get('/.well-known/x402', (_req: any, res: any) => {
     res.json(createDiscoveryDocument(
       'My API',

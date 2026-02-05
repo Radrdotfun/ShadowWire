@@ -1,34 +1,12 @@
-/**
- * x402 Payment Protocol integration for ShadowWire.
- *
- * Implements the x402 (HTTP 402 Payment Required) spec with ShadowWire
- * private transfers. Includes both client-side (paying for APIs) and
- * server-side (protecting endpoints with paywalls) components.
- *
- * Payment flow:
- *   1. Client requests paid endpoint
- *   2. Server returns 402 with payment requirements (including shadowwire scheme)
- *   3. Client pays via ShadowWire (amount hidden via Bulletproofs)
- *   4. Client retries request with X-Payment header containing transfer proof
- *   5. Server verifies the ShadowWire transfer via facilitator and serves the resource
- *
- * Spec: https://github.com/coinbase/x402
- */
+// x402 (HTTP 402) payment protocol for ShadowWire.
+// Spec: https://github.com/coinbase/x402
 
 import { ShadowWireClient } from './client';
 import { TokenSymbol, WalletAdapter, TransferResponse, PoolBalance } from './types';
 import { NetworkError } from './errors';
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
 const DEFAULT_TIMEOUT_MS = 15_000;
 const MAX_PAYMENT_HEADER_BYTES = 16_384;
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 
 export interface X402PaymentRequirement {
   scheme: string;
@@ -81,7 +59,6 @@ export interface X402ClientConfig {
   defaultTransferType?: 'internal' | 'external';
   maxRetries?: number;
   headers?: Record<string, string>;
-  /** Timeout for HTTP requests in milliseconds. */
   requestTimeoutMs?: number;
 }
 
@@ -99,11 +76,8 @@ export interface X402MiddlewareConfig {
   asset?: TokenSymbol;
   description?: string;
   maxTimeoutSeconds?: number;
-  /** x402 facilitator URL for payment verification and settlement */
   facilitatorUrl: string;
-  /** Additional accepted payment schemes alongside shadowwire */
   additionalSchemes?: X402PaymentRequirement[];
-  /** Called after successful payment verification */
   onPayment?: (info: { payer: string; amount: number; signature: string; resource: string }) => void;
 }
 
@@ -119,10 +93,6 @@ export interface X402PaymentProof {
     sender?: string;
   };
 }
-
-// ---------------------------------------------------------------------------
-// Encoding helpers (cross-platform: Node + browser)
-// ---------------------------------------------------------------------------
 
 function toBase64(input: string): string {
   if (typeof Buffer !== 'undefined') {
@@ -149,10 +119,6 @@ function isShadowwire(scheme: string): boolean {
   return scheme === 'shadowwire' || scheme === 'shadow';
 }
 
-// ---------------------------------------------------------------------------
-// Client (payer side)
-// ---------------------------------------------------------------------------
-
 export class X402Client {
   private client: ShadowWireClient;
   private wallet: WalletAdapter;
@@ -174,10 +140,6 @@ export class X402Client {
     this.timeoutMs = config.requestTimeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
-  /**
-   * Make a request to a URL that may require x402 payment.
-   * Handles the full flow: request -> 402 -> pay -> retry.
-   */
   async request<T = unknown>(url: string, options?: RequestInit): Promise<X402RequestResult<T>> {
     const mergedHeaders: Record<string, string> = {
       ...this.headers,
@@ -245,9 +207,6 @@ export class X402Client {
     return { success: false, error: 'Unexpected error', statusCode: 500 };
   }
 
-  /**
-   * Pay a specific x402 requirement via ShadowWire.
-   */
   async pay(requirement: X402PaymentRequirement): Promise<X402PaymentResult> {
     if (!isShadowwire(requirement.scheme)) {
       return { success: false, error: `Unsupported scheme: ${requirement.scheme}` };
@@ -292,21 +251,13 @@ export class X402Client {
     }
   }
 
-  /**
-   * Check sender's shielded balance for a given token.
-   */
   async getBalance(token?: TokenSymbol): Promise<PoolBalance> {
     return this.client.getBalance(this.senderWallet, token || this.defaultToken);
   }
 
-  /**
-   * Estimate the fee for a payment amount.
-   */
   estimateFee(amount: number, token?: TokenSymbol): { fee: number; feePercentage: number; netAmount: number } {
     return this.client.calculateFee(amount, token || this.defaultToken);
   }
-
-  // --- Static helpers ---
 
   static parseRequirements(body: unknown): X402Response | null {
     if (!body || typeof body !== 'object') return null;
@@ -333,8 +284,6 @@ export class X402Client {
       return null;
     }
   }
-
-  // --- Private ---
 
   private findCompatibleRequirement(accepts: X402PaymentRequirement[]): X402PaymentRequirement | null {
     const shadowReq = accepts.find((r) => isShadowwire(r.scheme));
@@ -386,13 +335,6 @@ export class X402Client {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Server middleware (payee side)
-// ---------------------------------------------------------------------------
-
-/**
- * Safely parse JSON from a response, checking content-type first.
- */
 async function safeParseBody<T>(response: Response): Promise<T | undefined> {
   const ct = response.headers?.get?.('content-type') || '';
   if (!ct.includes('application/json') && !ct.includes('text/json')) {
@@ -405,9 +347,6 @@ async function safeParseBody<T>(response: Response): Promise<T | undefined> {
   return response.json() as Promise<T>;
 }
 
-/**
- * Timed fetch to an external service (facilitator).
- */
 async function timedFetch(
   url: string,
   init: RequestInit,
@@ -422,9 +361,6 @@ async function timedFetch(
   }
 }
 
-/**
- * Create a 402 payment requirement response body.
- */
 export function createPaymentRequired(
   resource: string,
   config: X402MiddlewareConfig
@@ -465,11 +401,6 @@ export function createPaymentRequired(
   };
 }
 
-/**
- * Verify a payment via the configured x402 facilitator.
- * The facilitator handles ShadowWire transfer verification,
- * settlement, escrow, and dispute resolution.
- */
 export async function verifyPayment(
   paymentHeader: string,
   requirement: X402PaymentRequirement,
@@ -515,9 +446,6 @@ export async function verifyPayment(
   }
 }
 
-/**
- * Settle a verified payment via the facilitator.
- */
 export async function settlePayment(
   paymentHeader: string,
   requirement: X402PaymentRequirement,
@@ -555,19 +483,6 @@ export async function settlePayment(
   }
 }
 
-/**
- * Express-compatible middleware factory.
- *
- * Protects routes with x402 payment requirements. Verification and
- * settlement are delegated to the configured facilitator.
- *
- * Usage:
- *   app.get('/api/data', x402Paywall({
- *     payTo: 'WALLET',
- *     amount: 0.01,
- *     facilitatorUrl: 'https://x402.kamiyo.ai',
- *   }), handler);
- */
 export function x402Paywall(config: X402MiddlewareConfig) {
   return async (req: any, res: any, next: any) => {
     const resource = req.path || req.url || '/';
@@ -581,12 +496,10 @@ export function x402Paywall(config: X402MiddlewareConfig) {
       return res.status(402).json(body);
     }
 
-    // Reject oversized headers before hitting the facilitator.
     if (byteLength(paymentHeader) > MAX_PAYMENT_HEADER_BYTES) {
       return res.status(400).json({ error: 'Payment header too large' });
     }
 
-    // Decode and validate the proof structure early.
     const proof = X402Client.decodePaymentHeader(paymentHeader);
     if (!proof || !isShadowwire(proof.scheme)) {
       const body = createPaymentRequired(resource, config);
@@ -648,10 +561,6 @@ export function x402Paywall(config: X402MiddlewareConfig) {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Discovery document helper
-// ---------------------------------------------------------------------------
-
 export interface X402DiscoveryResource {
   path: string;
   method: string;
@@ -660,9 +569,6 @@ export interface X402DiscoveryResource {
   description?: string;
 }
 
-/**
- * Generate a .well-known/x402 discovery document.
- */
 export function createDiscoveryDocument(
   name: string,
   payTo: string,
