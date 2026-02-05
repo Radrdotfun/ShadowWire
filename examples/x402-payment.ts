@@ -60,7 +60,8 @@ async function serverExample() {
       amount: 0.01,
       asset: 'USDC',
       description: 'Premium data endpoint',
-      facilitatorUrl: 'https://facilitator.payai.network',
+      facilitatorUrl: 'https://x402.kamiyo.ai',
+      apiKey: 'YOUR_API_KEY',
       onPayment: (info) => {
         console.log(`Payment from ${info.payer}: ${info.signature}`);
       },

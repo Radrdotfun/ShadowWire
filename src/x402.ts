@@ -65,8 +65,10 @@ export interface X402ClientConfig {
 export interface X402VerifyResult {
   valid: boolean;
   payer?: string;
-  signature?: string;
-  amountHidden?: boolean;
+  amount?: string;
+  resource?: string;
+  balance?: number;
+  sufficient?: boolean;
   error?: string;
 }
 
@@ -77,6 +79,7 @@ export interface X402MiddlewareConfig {
   description?: string;
   maxTimeoutSeconds?: number;
   facilitatorUrl: string;
+  apiKey: string;
   additionalSchemes?: X402PaymentRequirement[];
   onPayment?: (info: { payer: string; amount: number; signature: string; resource: string }) => void;
 }
@@ -404,41 +407,46 @@ export function createPaymentRequired(
 export async function verifyPayment(
   paymentHeader: string,
   requirement: X402PaymentRequirement,
-  facilitatorUrl: string
+  facilitatorUrl: string,
+  apiKey?: string
 ): Promise<X402VerifyResult> {
   if (byteLength(paymentHeader) > MAX_PAYMENT_HEADER_BYTES) {
     return { valid: false, error: 'Payment header exceeds size limit' };
   }
 
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (apiKey) headers['X-API-Key'] = apiKey;
+
     const response = await timedFetch(`${facilitatorUrl}/verify`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
-        x402Version: 2,
         paymentHeader,
-        paymentRequirements: requirement,
+        resource: requirement.resource,
+        maxAmount: requirement.amount ? parseInt(requirement.amount, 10) / 1_000_000 : undefined,
       }),
     });
 
     if (!response.ok) {
-      return { valid: false, error: `Facilitator returned ${response.status}` };
+      const errBody = await safeParseBody<{ error?: string }>(response);
+      return { valid: false, error: errBody?.error || `Facilitator returned ${response.status}` };
     }
 
     const data = await response.json() as {
-      isValid?: boolean;
+      valid?: boolean;
       payer?: string;
-      signature?: string;
-      amountHidden?: boolean;
-      invalidReason?: string;
+      amount?: string;
+      resource?: string;
+      balance?: number;
+      sufficient?: boolean;
+      error?: string;
     };
 
     return {
-      valid: !!data.isValid,
+      valid: !!data.valid,
       payer: data.payer,
-      signature: data.signature,
-      amountHidden: data.amountHidden,
-      error: data.invalidReason,
+      error: data.error,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
@@ -449,32 +457,48 @@ export async function verifyPayment(
 export async function settlePayment(
   paymentHeader: string,
   requirement: X402PaymentRequirement,
-  facilitatorUrl: string
-): Promise<{ success: boolean; tx?: string; error?: string }> {
+  facilitatorUrl: string,
+  apiKey?: string
+): Promise<{ success: boolean; txHash?: string; amount?: number; fee?: number; net?: number; network?: string; error?: string }> {
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (apiKey) headers['X-API-Key'] = apiKey;
+
+    const amount = parseInt(requirement.amount, 10) / 1_000_000;
+
     const response = await timedFetch(`${facilitatorUrl}/settle`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
-        x402Version: 2,
         paymentHeader,
-        paymentRequirements: requirement,
+        merchantWallet: requirement.payTo,
+        amount,
+        asset: requirement.asset || 'USDC',
       }),
     });
 
     if (!response.ok) {
-      return { success: false, error: `Settlement returned ${response.status}` };
+      const errBody = await safeParseBody<{ error?: string }>(response);
+      return { success: false, error: errBody?.error || `Settlement returned ${response.status}` };
     }
 
     const data = await response.json() as {
       success?: boolean;
-      transaction?: string;
+      txHash?: string;
+      amount?: number;
+      fee?: number;
+      net?: number;
+      network?: string;
       error?: string;
     };
 
     return {
       success: !!data.success,
-      tx: data.transaction,
+      txHash: data.txHash,
+      amount: data.amount,
+      fee: data.fee,
+      net: data.net,
+      network: data.network,
       error: data.error,
     };
   } catch (err) {
@@ -521,7 +545,7 @@ export function x402Paywall(config: X402MiddlewareConfig) {
       maxTimeoutSeconds: config.maxTimeoutSeconds || 60,
     };
 
-    const verifyResult = await verifyPayment(paymentHeader, requirement, config.facilitatorUrl);
+    const verifyResult = await verifyPayment(paymentHeader, requirement, config.facilitatorUrl, config.apiKey);
 
     if (!verifyResult.valid) {
       const body = createPaymentRequired(resource, config);
@@ -531,7 +555,7 @@ export function x402Paywall(config: X402MiddlewareConfig) {
       return res.status(402).json(body);
     }
 
-    const settleResult = await settlePayment(paymentHeader, requirement, config.facilitatorUrl);
+    const settleResult = await settlePayment(paymentHeader, requirement, config.facilitatorUrl, config.apiKey);
     if (!settleResult.success) {
       const body = createPaymentRequired(resource, config);
       (body as any).settleError = settleResult.error;
@@ -542,17 +566,19 @@ export function x402Paywall(config: X402MiddlewareConfig) {
 
     req.x402 = {
       payer: verifyResult.payer,
-      signature: verifyResult.signature,
-      amountHidden: verifyResult.amountHidden,
-      tx: settleResult.tx,
+      txHash: settleResult.txHash,
+      amount: settleResult.amount,
+      fee: settleResult.fee,
+      net: settleResult.net,
+      network: settleResult.network,
       scheme: 'shadowwire',
     };
 
-    if (config.onPayment && verifyResult.payer && verifyResult.signature) {
+    if (config.onPayment && verifyResult.payer && settleResult.txHash) {
       config.onPayment({
         payer: verifyResult.payer,
         amount: config.amount,
-        signature: verifyResult.signature,
+        signature: settleResult.txHash,
         resource,
       });
     }
