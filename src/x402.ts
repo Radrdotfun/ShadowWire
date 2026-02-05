@@ -1,12 +1,10 @@
-// x402 (HTTP 402) payment protocol for ShadowWire.
-// Spec: https://github.com/coinbase/x402
-
 import { ShadowWireClient } from './client';
 import { TokenSymbol, WalletAdapter, TransferResponse, PoolBalance } from './types';
 import { NetworkError } from './errors';
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const MAX_PAYMENT_HEADER_BYTES = 16_384;
+const PAYMENT_HEADER_NAME = 'X-Payment';
 
 export interface X402PaymentRequirement {
   scheme: string;
@@ -98,28 +96,26 @@ export interface X402PaymentProof {
 }
 
 function toBase64(input: string): string {
-  if (typeof Buffer !== 'undefined') {
-    return Buffer.from(input, 'utf-8').toString('base64');
-  }
+  if (typeof Buffer !== 'undefined') return Buffer.from(input, 'utf-8').toString('base64');
   return btoa(input);
 }
 
 function fromBase64(encoded: string): string {
-  if (typeof Buffer !== 'undefined') {
-    return Buffer.from(encoded, 'base64').toString('utf-8');
-  }
+  if (typeof Buffer !== 'undefined') return Buffer.from(encoded, 'base64').toString('utf-8');
   return atob(encoded);
 }
 
 function byteLength(str: string): number {
-  if (typeof Buffer !== 'undefined') {
-    return Buffer.byteLength(str, 'utf-8');
-  }
+  if (typeof Buffer !== 'undefined') return Buffer.byteLength(str, 'utf-8');
   return new TextEncoder().encode(str).length;
 }
 
 function isShadowwire(scheme: string): boolean {
   return scheme === 'shadowwire' || scheme === 'shadow';
+}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 export class X402Client {
@@ -146,31 +142,27 @@ export class X402Client {
   async request<T = unknown>(url: string, options?: RequestInit): Promise<X402RequestResult<T>> {
     const mergedHeaders: Record<string, string> = {
       ...this.headers,
-      ...(options?.headers as Record<string, string> || {}),
+      ...((options?.headers as Record<string, string>) || {}),
     };
 
-    const response = await this.doFetch(url, { ...options, headers: mergedHeaders });
+    const initial = await this.doFetch(url, { ...options, headers: mergedHeaders });
 
-    if (response.status !== 402) {
-      if (!response.ok) {
-        return {
-          success: false,
-          error: `HTTP ${response.status}: ${response.statusText}`,
-          statusCode: response.status,
-        };
+    if (initial.status !== 402) {
+      if (!initial.ok) {
+        return { success: false, error: `HTTP ${initial.status}: ${initial.statusText}`, statusCode: initial.status };
       }
-      const data = await safeParseBody<T>(response);
-      return { success: true, data, statusCode: response.status };
+      const parsed = await safeParseBody<T>(initial);
+      return { success: true, data: parsed, statusCode: initial.status };
     }
 
-    const x402Body = await safeParseBody<X402Response>(response);
-    if (!x402Body?.accepts || x402Body.accepts.length === 0) {
+    const x402Body = await safeParseBody<X402Response>(initial);
+    if (!x402Body?.accepts?.length) {
       return { success: false, error: 'No accepted payment methods in 402 response', statusCode: 402 };
     }
 
     const requirement = this.findCompatibleRequirement(x402Body.accepts);
     if (!requirement) {
-      return { success: false, error: 'No compatible payment option (need Solana or ShadowWire)', statusCode: 402 };
+      return { success: false, error: 'No compatible payment option (need ShadowWire)', statusCode: 402 };
     }
 
     const payResult = await this.pay(requirement);
@@ -179,46 +171,36 @@ export class X402Client {
     }
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      const retryResponse = await this.doFetch(url, {
+      const res = await this.doFetch(url, {
         ...options,
-        headers: { ...mergedHeaders, 'X-Payment': payResult.paymentHeader },
+        headers: { ...mergedHeaders, [PAYMENT_HEADER_NAME]: payResult.paymentHeader },
       });
 
-      if (retryResponse.ok) {
-        const data = await safeParseBody<T>(retryResponse);
-        return {
-          success: true,
-          data,
-          payment: { transfer: payResult.transfer, requirement },
-          statusCode: retryResponse.status,
-        };
+      if (res.ok) {
+        const parsed = await safeParseBody<T>(res);
+        return { success: true, data: parsed, payment: { transfer: payResult.transfer, requirement }, statusCode: res.status };
       }
 
-      if (retryResponse.status === 402) {
+      if (res.status === 402) {
         return { success: false, error: 'Payment not accepted by server', statusCode: 402 };
       }
 
-      if (attempt === this.maxRetries) {
-        return {
-          success: false,
-          error: `HTTP ${retryResponse.status} after payment`,
-          statusCode: retryResponse.status,
-        };
+      if (attempt < this.maxRetries && res.status >= 500) {
+        await sleep(Math.min(250 * 2 ** attempt, 1000));
+        continue;
       }
+
+      return { success: false, error: `HTTP ${res.status} after payment`, statusCode: res.status };
     }
 
     return { success: false, error: 'Unexpected error', statusCode: 500 };
   }
 
   async pay(requirement: X402PaymentRequirement): Promise<X402PaymentResult> {
-    if (!isShadowwire(requirement.scheme)) {
-      return { success: false, error: `Unsupported scheme: ${requirement.scheme}` };
-    }
+    if (!isShadowwire(requirement.scheme)) return { success: false, error: `Unsupported scheme: ${requirement.scheme}` };
 
     const amount = this.parseAmount(requirement.amount, requirement.asset);
-    if (amount <= 0) {
-      return { success: false, error: 'Invalid payment amount' };
-    }
+    if (amount <= 0) return { success: false, error: 'Invalid payment amount' };
 
     try {
       const transfer = await this.client.transfer({
@@ -230,9 +212,7 @@ export class X402Client {
         wallet: this.wallet,
       });
 
-      if (!transfer.success) {
-        return { success: false, error: 'ShadowWire transfer failed' };
-      }
+      if (!transfer.success) return { success: false, error: 'ShadowWire transfer failed' };
 
       const paymentHeader = X402Client.encodePaymentHeader({
         x402Version: 2,
@@ -289,16 +269,12 @@ export class X402Client {
   }
 
   private findCompatibleRequirement(accepts: X402PaymentRequirement[]): X402PaymentRequirement | null {
-    const shadowReq = accepts.find((r) => isShadowwire(r.scheme));
-    if (shadowReq) return shadowReq;
-
-    return accepts.find((r) => r.network?.includes('solana')) || null;
+    return accepts.find((r) => isShadowwire(r.scheme)) || null;
   }
 
   private parseAmount(amountStr: string, asset: string): number {
     const raw = parseInt(amountStr, 10);
     if (isNaN(raw) || raw <= 0) return 0;
-
     const token = this.resolveToken(asset);
     try {
       const { TokenUtils } = require('./tokens');
@@ -309,10 +285,10 @@ export class X402Client {
   }
 
   private resolveToken(asset: string): TokenSymbol {
-    const upper = asset.toUpperCase();
+    const upper = asset?.toUpperCase?.() || '';
     try {
       const { TokenUtils } = require('./tokens');
-      if (TokenUtils.isValidToken(upper)) return upper as TokenSymbol;
+      if (upper && TokenUtils.isValidToken(upper)) return upper as TokenSymbol;
     } catch {}
     return this.defaultToken;
   }
@@ -321,17 +297,12 @@ export class X402Client {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
-      return await (globalThis as any).fetch(url, {
-        ...options,
-        signal: controller.signal,
-      });
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
+      return await (globalThis as any).fetch(url, { ...options, signal: controller.signal });
+    } catch (err: any) {
+      if (err && (err.name === 'AbortError')) {
         throw new NetworkError(`x402 request timed out after ${this.timeoutMs}ms`);
       }
-      throw new NetworkError(
-        err instanceof Error ? `x402 request failed: ${err.message}` : 'x402 request failed'
-      );
+      throw new NetworkError(err instanceof Error ? `x402 request failed: ${err.message}` : 'x402 request failed');
     } finally {
       clearTimeout(timer);
     }
@@ -339,22 +310,14 @@ export class X402Client {
 }
 
 async function safeParseBody<T>(response: Response): Promise<T | undefined> {
-  const ct = response.headers?.get?.('content-type') || '';
-  if (!ct.includes('application/json') && !ct.includes('text/json')) {
-    try {
-      return await response.json() as T;
-    } catch {
-      return undefined;
-    }
+  try {
+    return (await response.json()) as T;
+  } catch {
+    return undefined;
   }
-  return response.json() as Promise<T>;
 }
 
-async function timedFetch(
-  url: string,
-  init: RequestInit,
-  timeoutMs: number = DEFAULT_TIMEOUT_MS
-): Promise<Response> {
+async function timedFetch(url: string, init: RequestInit, timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -364,10 +327,7 @@ async function timedFetch(
   }
 }
 
-export function createPaymentRequired(
-  resource: string,
-  config: X402MiddlewareConfig
-): X402Response {
+export function createPaymentRequired(resource: string, config: X402MiddlewareConfig): X402Response {
   const amount = Math.floor(config.amount * 1_000_000).toString();
 
   const accepts: X402PaymentRequirement[] = [
@@ -380,27 +340,18 @@ export function createPaymentRequired(
       resource,
       description: config.description,
       maxTimeoutSeconds: config.maxTimeoutSeconds || 60,
-      extra: {
-        transferTypes: ['internal', 'external'],
-        amountHidden: true,
-      },
+      extra: { transferTypes: ['internal', 'external'], amountHidden: true },
     },
   ];
 
-  if (config.additionalSchemes) {
-    accepts.push(...config.additionalSchemes);
-  }
+  if (config.additionalSchemes) accepts.push(...config.additionalSchemes);
 
   return {
     x402Version: 2,
     accepts,
     error: 'Payment Required',
     facilitator: config.facilitatorUrl,
-    resource: {
-      url: resource,
-      description: config.description,
-      mimeType: 'application/json',
-    },
+    resource: { url: resource, description: config.description, mimeType: 'application/json' },
   };
 }
 
@@ -410,15 +361,13 @@ export async function verifyPayment(
   facilitatorUrl: string,
   apiKey?: string
 ): Promise<X402VerifyResult> {
-  if (byteLength(paymentHeader) > MAX_PAYMENT_HEADER_BYTES) {
-    return { valid: false, error: 'Payment header exceeds size limit' };
-  }
+  if (byteLength(paymentHeader) > MAX_PAYMENT_HEADER_BYTES) return { valid: false, error: 'Payment header exceeds size limit' };
 
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (apiKey) headers['X-API-Key'] = apiKey;
 
-    const response = await timedFetch(`${facilitatorUrl}/verify`, {
+    const res = await timedFetch(`${facilitatorUrl}/verify`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -428,24 +377,19 @@ export async function verifyPayment(
       }),
     });
 
-    if (!response.ok) {
-      const errBody = await safeParseBody<{ error?: string }>(response);
-      return { valid: false, error: errBody?.error || `Facilitator returned ${response.status}` };
+    if (!res.ok) {
+      const errBody = await safeParseBody<{ error?: string }>(res);
+      return { valid: false, error: errBody?.error || `Facilitator returned ${res.status}` };
     }
 
-    const data = await response.json() as {
-      valid?: boolean;
-      payer?: string;
-      amount?: string;
-      resource?: string;
-      balance?: number;
-      sufficient?: boolean;
-      error?: string;
-    };
-
+    const data = (await safeParseBody<any>(res)) || {};
     return {
       valid: !!data.valid,
       payer: data.payer,
+      amount: data.amount,
+      resource: data.resource,
+      balance: typeof data.balance === 'number' ? data.balance : undefined,
+      sufficient: typeof data.sufficient === 'boolean' ? data.sufficient : undefined,
       error: data.error,
     };
   } catch (err) {
@@ -466,32 +410,18 @@ export async function settlePayment(
 
     const amount = parseInt(requirement.amount, 10) / 1_000_000;
 
-    const response = await timedFetch(`${facilitatorUrl}/settle`, {
+    const res = await timedFetch(`${facilitatorUrl}/settle`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({
-        paymentHeader,
-        merchantWallet: requirement.payTo,
-        amount,
-        asset: requirement.asset || 'USDC',
-      }),
+      body: JSON.stringify({ paymentHeader, merchantWallet: requirement.payTo, amount, asset: requirement.asset || 'USDC' }),
     });
 
-    if (!response.ok) {
-      const errBody = await safeParseBody<{ error?: string }>(response);
-      return { success: false, error: errBody?.error || `Settlement returned ${response.status}` };
+    if (!res.ok) {
+      const errBody = await safeParseBody<{ error?: string }>(res);
+      return { success: false, error: errBody?.error || `Settlement returned ${res.status}` };
     }
 
-    const data = await response.json() as {
-      success?: boolean;
-      txHash?: string;
-      amount?: number;
-      fee?: number;
-      net?: number;
-      network?: string;
-      error?: string;
-    };
-
+    const data = (await safeParseBody<any>(res)) || {};
     return {
       success: !!data.success,
       txHash: data.txHash,
@@ -510,12 +440,13 @@ export async function settlePayment(
 export function x402Paywall(config: X402MiddlewareConfig) {
   return async (req: any, res: any, next: any) => {
     const resource = req.path || req.url || '/';
-    const paymentHeader = req.headers?.['x-payment'] as string | undefined;
+    const paymentHeader = (req.headers && (req.headers['x-payment'] || req.headers['X-Payment'])) as string | undefined;
 
     if (!paymentHeader) {
       const body = createPaymentRequired(resource, config);
       res.setHeader?.('WWW-Authenticate', 'X402');
       res.setHeader?.('X-Payment-Schemes', 'shadowwire');
+      res.setHeader?.('Vary', PAYMENT_HEADER_NAME);
       res.setHeader?.('Cache-Control', 'no-store');
       return res.status(402).json(body);
     }
@@ -529,6 +460,7 @@ export function x402Paywall(config: X402MiddlewareConfig) {
       const body = createPaymentRequired(resource, config);
       (body as any).verifyError = 'Invalid or unsupported payment proof';
       res.setHeader?.('WWW-Authenticate', 'X402');
+      res.setHeader?.('Vary', PAYMENT_HEADER_NAME);
       res.setHeader?.('Cache-Control', 'no-store');
       return res.status(402).json(body);
     }
@@ -545,12 +477,22 @@ export function x402Paywall(config: X402MiddlewareConfig) {
       maxTimeoutSeconds: config.maxTimeoutSeconds || 60,
     };
 
+    if (proof.payload?.resource && proof.payload.resource !== resource) {
+      const body = createPaymentRequired(resource, config);
+      (body as any).verifyError = 'Payment proof resource mismatch';
+      res.setHeader?.('WWW-Authenticate', 'X402');
+      res.setHeader?.('Vary', PAYMENT_HEADER_NAME);
+      res.setHeader?.('Cache-Control', 'no-store');
+      return res.status(402).json(body);
+    }
+
     const verifyResult = await verifyPayment(paymentHeader, requirement, config.facilitatorUrl, config.apiKey);
 
     if (!verifyResult.valid) {
       const body = createPaymentRequired(resource, config);
       (body as any).verifyError = verifyResult.error;
       res.setHeader?.('WWW-Authenticate', 'X402');
+      res.setHeader?.('Vary', PAYMENT_HEADER_NAME);
       res.setHeader?.('Cache-Control', 'no-store');
       return res.status(402).json(body);
     }
@@ -560,6 +502,7 @@ export function x402Paywall(config: X402MiddlewareConfig) {
       const body = createPaymentRequired(resource, config);
       (body as any).settleError = settleResult.error;
       res.setHeader?.('WWW-Authenticate', 'X402');
+      res.setHeader?.('Vary', PAYMENT_HEADER_NAME);
       res.setHeader?.('Cache-Control', 'no-store');
       return res.status(402).json(body);
     }
@@ -575,12 +518,7 @@ export function x402Paywall(config: X402MiddlewareConfig) {
     };
 
     if (config.onPayment && verifyResult.payer && settleResult.txHash) {
-      config.onPayment({
-        payer: verifyResult.payer,
-        amount: config.amount,
-        signature: settleResult.txHash,
-        resource,
-      });
+      config.onPayment({ payer: verifyResult.payer, amount: config.amount, signature: settleResult.txHash, resource });
     }
 
     next();
@@ -599,17 +537,14 @@ export function createDiscoveryDocument(
   name: string,
   payTo: string,
   resources: X402DiscoveryResource[],
-  options?: {
-    description?: string;
-    facilitatorUrl?: string;
-  }
+  options?: { description?: string; facilitatorUrl?: string }
 ): Record<string, unknown> {
   return {
     version: '2.0',
     name,
     description: options?.description,
     payTo,
-    schemes: ['shadowwire', 'exact'],
+    schemes: ['shadowwire'],
     networks: ['solana:mainnet'],
     facilitator: options?.facilitatorUrl,
     resources: resources.map((r) => ({
