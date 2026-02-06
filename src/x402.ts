@@ -5,6 +5,7 @@ import { NetworkError, X402InvalidSchemeError, X402HeaderTooLargeError, X402Faci
 const DEFAULT_TIMEOUT_MS = 15_000;
 const MAX_PAYMENT_HEADER_BYTES = 16_384;
 const PAYMENT_HEADER_NAME = 'X-Payment';
+const DEFAULT_FACILITATOR_URL = 'https://x402.kamiyo.ai';
 
 /** Describes a single payment option a server will accept for a 402-protected resource. */
 export interface X402PaymentRequirement {
@@ -79,7 +80,7 @@ export interface X402MiddlewareConfig {
   asset?: TokenSymbol;
   description?: string;
   maxTimeoutSeconds?: number;
-  facilitatorUrl: string;
+  facilitatorUrl?: string;
   apiKey: string;
   additionalSchemes?: X402PaymentRequirement[];
   onPayment?: (info: { payer: string; amount: number; signature: string; resource: string }) => void;
@@ -368,7 +369,7 @@ export function createPaymentRequired(resource: string, config: X402MiddlewareCo
     x402Version: 2,
     accepts,
     error: 'Payment Required',
-    facilitator: config.facilitatorUrl,
+    facilitator: config.facilitatorUrl || DEFAULT_FACILITATOR_URL,
     resource: { url: resource, description: config.description, mimeType: 'application/json' },
   };
 }
@@ -509,7 +510,9 @@ export function x402Paywall(config: X402MiddlewareConfig) {
       return res.status(402).json(body);
     }
 
-    const verifyResult = await verifyPayment(paymentHeader, requirement, config.facilitatorUrl, config.apiKey);
+    const facilitator = config.facilitatorUrl || DEFAULT_FACILITATOR_URL;
+
+    const verifyResult = await verifyPayment(paymentHeader, requirement, facilitator, config.apiKey);
 
     if (!verifyResult.valid) {
       const body = createPaymentRequired(resource, config);
@@ -520,7 +523,7 @@ export function x402Paywall(config: X402MiddlewareConfig) {
       return res.status(402).json(body);
     }
 
-    const settleResult = await settlePayment(paymentHeader, requirement, config.facilitatorUrl, config.apiKey);
+    const settleResult = await settlePayment(paymentHeader, requirement, facilitator, config.apiKey);
     if (!settleResult.success) {
       const body = createPaymentRequired(resource, config);
       (body as any).settleError = settleResult.error;
@@ -574,7 +577,7 @@ export function createDiscoveryDocument(
     payTo,
     schemes: ['shadowwire'],
     networks: ['solana:mainnet'],
-    facilitator: options?.facilitatorUrl,
+    facilitator: options?.facilitatorUrl || DEFAULT_FACILITATOR_URL,
     resources: resources.map((r) => ({
       path: r.path,
       method: r.method,
