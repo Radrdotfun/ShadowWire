@@ -26,6 +26,9 @@ export {
   NetworkError,
   WASMNotSupportedError,
   ProofGenerationError,
+  X402InvalidSchemeError,
+  X402HeaderTooLargeError,
+  X402FacilitatorError,
 } from './errors';
 
 export {

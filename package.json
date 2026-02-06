@@ -26,6 +26,8 @@
   "license": "MIT",
   "scripts": {
     "build": "tsc && node -e \"require('fs').cpSync('wasm', 'dist/wasm', {recursive:true})\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "prepublish": "npm run build",
     "prepare": "npm run build"
   },
@@ -37,6 +39,7 @@
     "@types/node": "^22.5.5",
     "@types/bs58": "^4.0.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.6.2"
+    "typescript": "^5.6.2",
+    "vitest": "^3.0.0"
   }
 }
