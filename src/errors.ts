@@ -78,3 +78,27 @@ export class ProofGenerationError extends ShadowWireError {
   }
 }
 
+export class X402InvalidSchemeError extends ShadowWireError {
+  constructor(scheme: string) {
+    super(`Unsupported x402 payment scheme: ${scheme}`);
+    this.name = 'X402InvalidSchemeError';
+    Object.setPrototypeOf(this, X402InvalidSchemeError.prototype);
+  }
+}
+
+export class X402HeaderTooLargeError extends ShadowWireError {
+  constructor(size?: number) {
+    super(size ? `Payment header exceeds size limit (${size} bytes)` : 'Payment header exceeds size limit');
+    this.name = 'X402HeaderTooLargeError';
+    Object.setPrototypeOf(this, X402HeaderTooLargeError.prototype);
+  }
+}
+
+export class X402FacilitatorError extends ShadowWireError {
+  constructor(message: string = 'Facilitator request failed') {
+    super(message);
+    this.name = 'X402FacilitatorError';
+    Object.setPrototypeOf(this, X402FacilitatorError.prototype);
+  }
+}
+
